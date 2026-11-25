@@ -73,15 +73,30 @@ class DrimeLogin(
         store.saveAccountName(runCatching { api.accountName() }.getOrNull())
     }
 
-    /** For people who'd rather paste a personal access token (Settings › Developers in Drime). */
+    /**
+     * Connect with a personal access token (Drime › Settings › Developers).
+     * The token is checked first and only stored once Drime accepts it, so a bad
+     * token never flips the UI into the browser and back.
+     */
     suspend fun useAccessToken(token: String) {
-        store.save(TokenStore.Tokens(token.trim(), refresh = null, expiresAt = Long.MAX_VALUE))
-        try {
-            store.saveAccountName(api.accountName())
-        } catch (e: Exception) {
-            store.save(null)
-            throw DrimeException("That token didn't work. Check that it has Files and Folders read access.")
+        val clean = token.trim().removePrefix("Bearer ").trim()
+        if (clean.isEmpty()) throw DrimeException("Paste your token first.")
+        val name = try {
+            api.validate(clean)
+        } catch (e: DrimeHttpException) {
+            throw DrimeException(
+                when (e.code) {
+                    401 -> "Drime didn't recognise that token. Check that you copied all of it."
+                    403 -> "That token can't read your files. Give it Read access to Files and Folders."
+                    else -> e.message ?: "Drime answered with an error (${e.code})."
+                },
+            )
+        } catch (e: java.io.IOException) {
+            if (e is DrimeException) throw e
+            throw DrimeException("Can't reach Drime. Check your internet connection.")
         }
+        store.save(TokenStore.Tokens(clean, refresh = null, expiresAt = Long.MAX_VALUE))
+        store.saveAccountName(name)
     }
 
     suspend fun signOut() {

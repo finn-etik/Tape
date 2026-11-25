@@ -48,7 +48,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,7 +83,6 @@ fun DrimeScreen() {
 @Composable
 private fun ConnectDrime(graph: AppGraph) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var token by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -93,7 +91,9 @@ private fun ConnectDrime(graph: AppGraph) {
         if (busy || token.isBlank()) return
         busy = true
         error = null
-        scope.launch {
+        // App scope, not this screen's: once the token is saved this screen goes away,
+        // and that must not cancel (and undo) the connection.
+        graph.scope.launch {
             try {
                 graph.drimeLogin.useAccessToken(token)
             } catch (e: Exception) {
@@ -175,7 +175,6 @@ private fun ConnectDrime(graph: AppGraph) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DrimeBrowserView(graph: AppGraph) {
-    val scope = rememberCoroutineScope()
     val state by graph.drimeBrowser.state.collectAsStateWithLifecycle()
     val account by graph.tokens.accountName.collectAsStateWithLifecycle()
     var folderMenu by remember { mutableStateOf<DrimeEntry?>(null) }
@@ -199,7 +198,7 @@ private fun DrimeBrowserView(graph: AppGraph) {
     }
 
     fun addToBooks(hash: String, name: String, asBook: Boolean) {
-        scope.launch { graph.books.addShelf(DrimeShelf(hash, name, asBook)) }
+        graph.scope.launch { graph.books.addShelf(DrimeShelf(hash, name, asBook)) }
         toast = if (asBook) "“$name” added to Books" else "Books will look inside “$name”"
     }
 
@@ -242,7 +241,7 @@ private fun DrimeBrowserView(graph: AppGraph) {
                         onClick = {
                             accountMenu = false
                             graph.drimeBrowser.reset()
-                            scope.launch { graph.drimeLogin.signOut() }
+                            graph.scope.launch { graph.drimeLogin.signOut() }
                         },
                     )
                 }

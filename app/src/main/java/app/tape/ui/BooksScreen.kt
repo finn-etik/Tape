@@ -41,7 +41,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,14 +56,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun BooksScreen(onOpenBook: (String) -> Unit) {
     val graph = LocalContext.current.graph
-    val scope = rememberCoroutineScope()
     val books by graph.books.books.collectAsStateWithLifecycle()
     val scanning by graph.books.scanning.collectAsStateWithLifecycle()
     val localRoot by graph.books.localRoot.collectAsStateWithLifecycle()
     val shelves by graph.books.shelves.collectAsStateWithLifecycle()
     val progressVersion by graph.progress.version.collectAsStateWithLifecycle()
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) scope.launch { graph.books.setLocalRoot(uri) }
+        if (uri != null) graph.scope.launch { graph.books.setLocalRoot(uri) }
     }
 
     LaunchedEffect(Unit) { graph.books.ensureScanned() }
@@ -118,7 +116,7 @@ fun BooksScreen(onOpenBook: (String) -> Unit) {
                 title = localRoot?.let { folderName(it) } ?: "No folder on this phone",
                 subtitle = if (localRoot == null) "Choose folder" else "This phone · change",
                 onClick = { pickFolder.launch(null) },
-                onRemove = localRoot?.let { { scope.launch { graph.books.clearLocalRoot() } } },
+                onRemove = localRoot?.let { { graph.scope.launch { graph.books.clearLocalRoot() } } },
             )
         }
         items(shelves, key = { "shelf:" + it.hash }) { shelf ->
@@ -127,7 +125,7 @@ fun BooksScreen(onOpenBook: (String) -> Unit) {
                 subtitle = if (shelf.asBook) "Drime · single book" else "Drime · library folder",
                 cloud = true,
                 onClick = {},
-                onRemove = { scope.launch { graph.books.removeShelf(shelf.hash) } },
+                onRemove = { graph.scope.launch { graph.books.removeShelf(shelf.hash) } },
             )
         }
         item {
@@ -136,7 +134,7 @@ fun BooksScreen(onOpenBook: (String) -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 color = Muted,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clip(CircleShape)
-                    .clickable(enabled = !scanning) { scope.launch { graph.books.rescan() } }.padding(12.dp),
+                    .clickable(enabled = !scanning) { graph.scope.launch { graph.books.rescan() } }.padding(12.dp),
             )
         }
     }

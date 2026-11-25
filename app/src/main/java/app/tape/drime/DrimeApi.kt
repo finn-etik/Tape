@@ -41,7 +41,9 @@ data class DrimeEntry(
 
 data class DrimeListing(val entries: List<DrimeEntry>)
 
-class DrimeException(message: String) : IOException(message)
+open class DrimeException(message: String) : IOException(message)
+
+class DrimeHttpException(val code: Int, message: String) : DrimeException(message)
 
 /** The small slice of https://docs.drime.cloud/api-reference that a player needs. */
 class DrimeApi(private val http: OkHttpClient) {
@@ -76,16 +78,39 @@ class DrimeApi(private val http: OkHttpClient) {
 
     /** Display name of the signed-in account. */
     suspend fun accountName(): String? = withContext(Dispatchers.IO) {
-        val user = getJson("${DrimeConfig.API}/users/me").optJSONObject("user") ?: return@withContext null
-        user.str("display_name") ?: user.str("first_name") ?: user.str("email")
+        nameOf(getJson("${DrimeConfig.API}/users/me"))
     }
 
-    private fun getJson(url: String): JSONObject {
-        val request = Request.Builder().url(url).header("Accept", "application/json").build()
+    /**
+     * Checks a token before TAPE stores it. Returns the account's display name (or null if
+     * Drime won't tell us), or throws a [DrimeException] that says what is wrong.
+     */
+    suspend fun validate(token: String): String? = withContext(Dispatchers.IO) {
+        try {
+            nameOf(getJson("${DrimeConfig.API}/users/me", token))
+        } catch (e: DrimeHttpException) {
+            if (e.code != 403) throw e
+            // Some restricted tokens may not see /users/me; what TAPE needs is reading files.
+            getJson("${DrimeConfig.API}/drive/file-entries?perPage=1", token)
+            null
+        }
+    }
+
+    private fun nameOf(json: JSONObject): String? {
+        val user = json.optJSONObject("user") ?: return null
+        return user.str("display_name") ?: user.str("first_name") ?: user.str("email")
+    }
+
+    /** [token] set = use exactly this token (the auth interceptor then stays out of the way). */
+    private fun getJson(url: String, token: String? = null): JSONObject {
+        val request = Request.Builder().url(url).header("Accept", "application/json")
+            .apply { if (token != null) header("Authorization", "Bearer $token") }
+            .build()
         http.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw DrimeException(
+                throw DrimeHttpException(
+                    response.code,
                     when (response.code) {
                         401 -> "Your Drime session has ended. Connect again."
                         403 -> "TAPE isn't allowed to open this. Check the app's permissions in Drime."
@@ -95,7 +120,11 @@ class DrimeApi(private val http: OkHttpClient) {
                     },
                 )
             }
-            return JSONObject(text)
+            return try {
+                JSONObject(text)
+            } catch (e: org.json.JSONException) {
+                throw DrimeException("Drime sent an answer TAPE didn't understand.")
+            }
         }
     }
 
