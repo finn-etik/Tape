@@ -26,8 +26,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: Build debug APK
-        run: ./gradlew --no-configuration-cache assembleDebug
+      - name: Test and build debug APK
+        run: ./gradlew --no-configuration-cache testDebugUnitTest assembleDebug
         env:
           DRIME_CLIENT_ID: ${{ vars.DRIME_CLIENT_ID }}
 

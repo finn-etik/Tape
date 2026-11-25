@@ -2,6 +2,7 @@ package app.tape.playback
 
 import android.net.Uri
 import android.os.Bundle
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 
@@ -24,6 +25,9 @@ object Media {
         artwork: Uri? = null,
         bookId: String? = null,
         track: Int? = null,
+        /** For a chapter inside a longer file (e.g. an .m4b): where it starts and ends. */
+        clipStartMs: Long = 0L,
+        clipEndMs: Long = C.TIME_END_OF_SOURCE,
     ): MediaItem {
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
@@ -47,8 +51,21 @@ object Media {
             // PlaybackService restores it from here.
             .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())
             .setMediaMetadata(metadata.build())
+            .apply {
+                if (clipStartMs > 0 || clipEndMs != C.TIME_END_OF_SOURCE) {
+                    setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(clipStartMs)
+                            .setEndPositionMs(clipEndMs)
+                            .build(),
+                    )
+                }
+            }
             .build()
     }
+
+    /** "drime:abc#3" (chapter 3 inside a file) → "drime:abc": the file itself, e.g. for downloads. */
+    fun fileId(mediaId: String): String = mediaId.substringBefore('#')
 
     fun bookId(item: MediaItem?): String? = item?.mediaMetadata?.extras?.getString(EXTRA_BOOK_ID)
 }

@@ -25,6 +25,7 @@ travel with it. The app shows them under **About › Open-source licenses**.
 | Component | Used for | License |
 |---|---|---|
 | Gradle wrapper | Building | Apache 2.0 |
+| JUnit 4 | Unit tests (not in the app) | Eclipse Public License 1.0 |
 | Android Gradle Plugin, Kotlin Gradle Plugin | Building | Apache 2.0 |
 | GitHub Actions: checkout, setup-java, setup-gradle, upload-artifact | CI builds | MIT |
 | Roboto (Google Fonts, loaded by `preview/index.html`, not bundled) | Web preview type | SIL Open Font License 1.1 |

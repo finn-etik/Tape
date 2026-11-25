@@ -2,6 +2,14 @@ package app.tape.ui
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.rounded.BookmarkAdd
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -82,6 +90,7 @@ fun NowPlayingScreen(onClose: () -> Unit) {
     val np by pc.state.collectAsStateWithLifecycle()
     var position by remember { mutableLongStateOf(pc.position()) }
     var showQueue by remember { mutableStateOf(false) }
+    var bookmarkAt by remember { mutableStateOf<Pair<Int, Long>?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -112,7 +121,11 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f),
             )
-            if (!np.isBook) {
+            if (np.isBook) {
+                IconButton(onClick = { bookmarkAt = np.index to pc.position() }) {
+                    Icon(Icons.Rounded.BookmarkAdd, "Add bookmark", tint = Ink)
+                }
+            } else {
                 IconButton(onClick = { pc.currentTrack()?.let { PlaylistPicker.open(listOf(it)) } }) {
                     Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to playlist", tint = Ink)
                 }
@@ -175,30 +188,121 @@ fun NowPlayingScreen(onClose: () -> Unit) {
         }
     }
 
-    if (showQueue) {
-        val titles = remember(np.count, np.index) { pc.queueTitles() }
-        val listState = rememberLazyListState(initialFirstVisibleItemIndex = (np.index - 2).coerceAtLeast(0))
-        ModalBottomSheet(onDismissRequest = { showQueue = false }, containerColor = MaterialTheme.colorScheme.surface) {
-            Text(
-                if (np.isBook) "Chapters" else "Up next",
-                style = MaterialTheme.typography.titleMedium,
-                color = Ink,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                itemsIndexed(titles) { i, title ->
-                    val current = i == np.index
-                    Row(
-                        Modifier.fillMaxWidth().clickable { pc.jumpTo(i); showQueue = false }.padding(horizontal = 24.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("${i + 1}", style = MaterialTheme.typography.bodySmall, color = if (current) Accent else Muted, modifier = Modifier.width(36.dp))
-                        Text(title, style = MaterialTheme.typography.bodyLarge, color = if (current) Accent else Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    if (showQueue) QueueSheet(np, pc, onDismiss = { showQueue = false })
+
+    bookmarkAt?.let { (chapter, at) ->
+        val bookId = np.bookId
+        if (bookId == null) {
+            bookmarkAt = null
+        } else {
+            NoteDialog(
+                title = "Bookmark",
+                subtitle = (if (np.count > 1) "Chapter ${chapter + 1} · " else "") + formatTime(at),
+                confirm = "Save",
+                onDismiss = { bookmarkAt = null },
+            ) { note ->
+                graph.bookmarks.add(bookId, chapter, at, note)
+                bookmarkAt = null
+            }
+        }
+    }
+}
+
+/**
+ * Chapters (books) or the play queue (music). In the queue, drag ≡ to reorder and
+ * long-press to remove.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun QueueSheet(np: NowPlaying, pc: PlayerConnection, onDismiss: () -> Unit) {
+    var version by remember { mutableIntStateOf(0) }
+    val rows = remember(np.count, version) { pc.queueTitles().mapIndexed { i, t -> RowItem(i.toLong(), t) }.toMutableStateList() }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (np.index - 2).coerceAtLeast(0))
+    val reorder = rememberReorderState(
+        listState = listState,
+        headerCount = 0,
+        itemCount = { rows.size },
+        onMove = { from, to -> rows.add(to, rows.removeAt(from)) },
+        onDrop = { from, to -> pc.moveInQueue(from, to) },
+    )
+    var menuFor by remember { mutableStateOf<Int?>(null) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface) {
+        Text(
+            if (np.isBook) "Chapters" else "Up next",
+            style = MaterialTheme.typography.titleMedium,
+            color = Ink,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            itemsIndexed(rows, key = { _, r -> r.key }) { i, r ->
+                val current = i == np.index
+                with(reorder) {
+                    Box(Modifier.draggedRow(i)) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .combinedClickable(
+                                    onClick = { pc.jumpTo(i); onDismiss() },
+                                    onLongClick = { if (!np.isBook && !current) menuFor = i },
+                                )
+                                .padding(start = 24.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("${i + 1}", style = MaterialTheme.typography.bodySmall, color = if (current) Accent else Muted, modifier = Modifier.width(36.dp))
+                            Text(
+                                r.track,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (current) Accent else Ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (!np.isBook) DragHandle(reorder, i)
+                        }
+                        DropdownMenu(expanded = menuFor == i, onDismissRequest = { menuFor = null }) {
+                            DropdownMenuItem(
+                                text = { Text("Remove from queue") },
+                                onClick = { menuFor = null; pc.removeFromQueue(i); version++ },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** Small dialog with an optional note, used for bookmarks. */
+@Composable
+fun NoteDialog(
+    title: String,
+    subtitle: String,
+    confirm: String,
+    initial: String = "",
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var note by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    placeholder = { Text("Note (optional)") },
+                    maxLines = 4,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(note) }) { Text(confirm) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

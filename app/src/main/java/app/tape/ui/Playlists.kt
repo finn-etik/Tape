@@ -3,6 +3,13 @@ package app.tape.ui
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.rounded.DownloadDone
+import androidx.compose.runtime.toMutableStateList
+import androidx.media3.exoplayer.offline.Download
+import app.tape.playback.Kept
+import app.tape.playback.Media
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,7 +74,10 @@ object PlaylistPicker {
 
 class TrackAction(val label: String, val run: () -> Unit)
 
-/** A song in any list. Long-press opens [actions]; that's how songs get into playlists. */
+/**
+ * A song in any list. Long-press opens its menu: Play next, Add to queue (when music is
+ * playing), Add to playlist, then any screen-specific [actions].
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackRow(
@@ -75,15 +85,30 @@ fun TrackRow(
     showArt: Boolean,
     number: Int? = null,
     actions: List<TrackAction> = emptyList(),
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    var menu by remember { mutableStateOf(false) }
-    Box {
+    val graph = LocalContext.current.graph
+    val downloads by graph.downloads.state.collectAsStateWithLifecycle()
+    val kept = track.isCloud && downloads[Media.fileId(track.mediaId)]?.state == Download.STATE_COMPLETED
+    var menu by remember { mutableStateOf<List<TrackAction>?>(null) }
+    Box(modifier) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = { if (actions.isNotEmpty()) menu = true })
-                .padding(horizontal = 24.dp, vertical = 10.dp),
+                .background(Paper)
+                .combinedClickable(onClick = onClick, onLongClick = {
+                    menu = buildList {
+                        if (graph.player.canQueue) {
+                            add(TrackAction("Play next") { graph.player.playNext(listOf(track)) })
+                            add(TrackAction("Add to queue") { graph.player.addToQueue(listOf(track)) })
+                        }
+                        add(addToPlaylistAction(track))
+                        addAll(actions)
+                    }
+                })
+                .padding(start = 24.dp, end = if (trailing != null) 12.dp else 24.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showArt) {
@@ -99,14 +124,20 @@ fun TrackRow(
             }
             Spacer(Modifier.width(12.dp))
             if (track.isCloud) {
-                Icon(Icons.Rounded.Cloud, "In Drime", tint = Muted.copy(alpha = 0.5f), modifier = Modifier.size(14.dp))
+                Icon(
+                    if (kept) Icons.Rounded.DownloadDone else Icons.Rounded.Cloud,
+                    if (kept) "On this phone" else "In Drime",
+                    tint = if (kept) Accent else Muted.copy(alpha = 0.5f),
+                    modifier = Modifier.size(14.dp),
+                )
                 Spacer(Modifier.width(8.dp))
             }
             if (track.durationMs > 0) Text(formatTime(track.durationMs), style = MaterialTheme.typography.bodySmall, color = Muted)
+            trailing?.invoke()
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            actions.forEach { a ->
-                DropdownMenuItem(text = { Text(a.label) }, onClick = { menu = false; a.run() })
+        DropdownMenu(expanded = menu != null, onDismissRequest = { menu = null }) {
+            menu?.forEach { a ->
+                DropdownMenuItem(text = { Text(a.label) }, onClick = { menu = null; a.run() })
             }
         }
     }
@@ -249,13 +280,37 @@ fun PlaylistScreen(id: String, onBack: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    val keepOnPhone = rememberKeepOnPhone()
+    val kept = keptStatus(p.tracks)
+    val hasCloud = p.tracks.any { it.isCloud }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    // A local copy that follows the finger while dragging; the store is updated on drop.
+    // Rows get their own ids because the same song may appear twice.
+    val rows = remember(p.tracks) { p.tracks.mapIndexed { i, t -> RowItem(i.toLong(), t) }.toMutableStateList() }
+    val listState = rememberLazyListState()
+    val headerRows = if (p.tracks.isEmpty()) 3 else 4
+    val reorder = rememberReorderState(
+        listState = listState,
+        headerCount = headerRows,
+        itemCount = { rows.size },
+        onMove = { from, to -> rows.add(to, rows.removeAt(from)) },
+        onDrop = { from, to -> graph.playlists.move(p.id, from, to) },
+    )
+
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             BackBar("Playlists", onBack) {
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = Ink) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (hasCloud) {
+                            if (kept == Kept.None || kept == Kept.Partly || kept == Kept.Failed) {
+                                DropdownMenuItem(text = { Text("Keep on phone") }, onClick = { menu = false; keepOnPhone { graph.downloads.keepTracks(p.tracks) } })
+                            }
+                            if (kept != Kept.None) {
+                                DropdownMenuItem(text = { Text("Remove from phone") }, onClick = { menu = false; graph.downloads.removeTracks(p.tracks) })
+                            }
+                        }
                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = true })
                         DropdownMenuItem(text = { Text("Delete playlist") }, onClick = { menu = false; deleting = true })
                     }
@@ -269,9 +324,11 @@ fun PlaylistScreen(id: String, onBack: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.headlineSmall, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(if (p.tracks.size == 1) "1 song" else "${p.tracks.size} songs", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    KeptLine(kept, Modifier.padding(top = 4.dp))
                 }
             }
         }
+        item { Spacer(Modifier.height(0.dp)) }
         if (p.tracks.isEmpty()) {
             item {
                 Text(
@@ -289,18 +346,16 @@ fun PlaylistScreen(id: String, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            // Same song can appear twice in a playlist, so key by position.
-            itemsIndexed(p.tracks) { i, t ->
-                TrackRow(
-                    track = t,
-                    showArt = true,
-                    actions = listOfNotNull(
-                        TrackAction("Move up") { graph.playlists.move(p.id, i, i - 1) }.takeIf { i > 0 },
-                        TrackAction("Move down") { graph.playlists.move(p.id, i, i + 1) }.takeIf { i < p.tracks.lastIndex },
-                        addToPlaylistAction(t),
-                        TrackAction("Remove from playlist") { graph.playlists.removeAt(p.id, i) },
-                    ),
-                ) { graph.player.playTracks(p.tracks, i) }
+            itemsIndexed(rows, key = { _, r -> r.key }) { i, r ->
+                with(reorder) {
+                    TrackRow(
+                        track = r.track,
+                        showArt = true,
+                        actions = listOf(TrackAction("Remove from playlist") { graph.playlists.removeAt(p.id, i) }),
+                        modifier = Modifier.draggedRow(i),
+                        trailing = { DragHandle(reorder, i) },
+                    ) { graph.player.playTracks(rows.map { it.track }, i) }
+                }
             }
         }
     }
@@ -323,6 +378,9 @@ fun PlaylistScreen(id: String, onBack: () -> Unit) {
         )
     }
 }
+
+/** A row in a reorderable list, with an id that survives moves. */
+class RowItem<T>(val key: Long, val track: T)
 
 @Composable
 fun NameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {

@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
@@ -55,31 +56,42 @@ fun TapeRoot() {
     var openAlbum by rememberSaveable { mutableStateOf<String?>(null) }
     var openPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
     var openBook by rememberSaveable { mutableStateOf<String?>(null) }
+    var searching by rememberSaveable { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.fillMaxSize()) {
-            Header(selected = tab, onSelect = {
-                if (it == tab) { openAlbum = null; openPlaylist = null; openBook = null } // tapping the current tab goes home
-                tab = it
-            })
+            if (searching) {
+                SearchScreen(
+                    onClose = { searching = false },
+                    onOpenBook = { searching = false; tab = Tab.Books; openBook = it },
+                    onOpenAlbum = { searching = false; tab = Tab.Music; openPlaylist = null; openAlbum = it },
+                    onOpenPlaylist = { searching = false; tab = Tab.Music; openAlbum = null; openPlaylist = it },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Header(selected = tab, onSearch = { searching = true }, onSelect = {
+                    if (it == tab) { openAlbum = null; openPlaylist = null; openBook = null } // tapping the current tab goes home
+                    tab = it
+                })
 
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (tab) {
-                    Tab.Music -> {
-                        val album = openAlbum
-                        val playlist = openPlaylist
-                        when {
-                            album != null -> AlbumScreen(album, onBack = { openAlbum = null })
-                            playlist != null -> PlaylistScreen(playlist, onBack = { openPlaylist = null })
-                            else -> MusicScreen(onOpenAlbum = { openAlbum = it }, onOpenPlaylist = { openPlaylist = it })
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when (tab) {
+                        Tab.Music -> {
+                            val album = openAlbum
+                            val playlist = openPlaylist
+                            when {
+                                album != null -> AlbumScreen(album, onBack = { openAlbum = null })
+                                playlist != null -> PlaylistScreen(playlist, onBack = { openPlaylist = null })
+                                else -> MusicScreen(onOpenAlbum = { openAlbum = it }, onOpenPlaylist = { openPlaylist = it })
+                            }
                         }
+                        Tab.Books -> {
+                            val book = openBook
+                            if (book == null) BooksScreen(onOpenBook = { openBook = it })
+                            else BookScreen(book, onBack = { openBook = null })
+                        }
+                        Tab.Drime -> DrimeScreen()
                     }
-                    Tab.Books -> {
-                        val book = openBook
-                        if (book == null) BooksScreen(onOpenBook = { openBook = it })
-                        else BookScreen(book, onBack = { openBook = null })
-                    }
-                    Tab.Drime -> DrimeScreen()
                 }
             }
 
@@ -105,12 +117,13 @@ fun TapeRoot() {
     BackHandler(enabled = openAlbum != null && tab == Tab.Music && !playerOpen) { openAlbum = null }
     BackHandler(enabled = openPlaylist != null && openAlbum == null && tab == Tab.Music && !playerOpen) { openPlaylist = null }
     BackHandler(enabled = openBook != null && tab == Tab.Books && !playerOpen) { openBook = null }
+    BackHandler(enabled = searching && !playerOpen) { searching = false }
     BackHandler(enabled = playerOpen) { playerOpen = false }
 }
 
 /** The tab names are the title: large, quiet, the current one in ink. */
 @Composable
-private fun Header(selected: Tab, onSelect: (Tab) -> Unit) {
+private fun Header(selected: Tab, onSearch: () -> Unit, onSelect: (Tab) -> Unit) {
     var about by remember { mutableStateOf(false) }
     Row(
         Modifier
@@ -132,6 +145,13 @@ private fun Header(selected: Tab, onSelect: (Tab) -> Unit) {
             Spacer(Modifier.width(20.dp))
         }
         Spacer(Modifier.weight(1f))
+
+        Icon(
+            Icons.Rounded.Search,
+            contentDescription = "Search",
+            tint = Muted,
+            modifier = Modifier.padding(bottom = 7.dp, end = 10.dp).size(24.dp).quietClick(onSearch),
+        )
 
         // Drime is where files come from, not a library of its own: a small chip, not a title.
         val onDrime = selected == Tab.Drime
