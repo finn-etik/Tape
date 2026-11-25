@@ -54,7 +54,7 @@ class DrimeSession(
         val request = Request.Builder().url(DrimeConfig.TOKEN_URL).post(body).build()
         return try {
             http.newCall(request).execute().use { response ->
-                val text = response.body?.string().orEmpty()
+                val text = response.body.string().orEmpty()
                 when {
                     response.isSuccessful -> {
                         val next = parseTokens(JSONObject(text), fallbackRefresh = tokens.refresh)

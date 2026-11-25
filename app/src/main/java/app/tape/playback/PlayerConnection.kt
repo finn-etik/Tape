@@ -162,8 +162,8 @@ class PlayerConnection(private val context: Context, private val progress: Progr
     fun playBook(book: Book, chapter: Int? = null) {
         val p = progress.get(book.id)
         val resume = p != null && !p.finished
-        val index = chapter ?: if (resume) p!!.chapter.coerceIn(0, book.chapters.lastIndex) else 0
-        val position = if (chapter == null && resume) p!!.positionMs else 0L
+        val index = chapter ?: if (resume) p.chapter.coerceIn(0, book.chapters.lastIndex) else 0
+        val position = if (chapter == null && resume) p.positionMs else 0L
         play(book.mediaItems(), index, position)
     }
 

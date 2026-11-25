@@ -107,7 +107,7 @@ class DrimeApi(private val http: OkHttpClient) {
             .apply { if (token != null) header("Authorization", "Bearer $token") }
             .build()
         http.newCall(request).execute().use { response ->
-            val text = response.body?.string().orEmpty()
+            val text = response.body.string().orEmpty()
             if (!response.isSuccessful) {
                 throw DrimeHttpException(
                     response.code,

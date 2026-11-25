@@ -192,7 +192,7 @@ class DrimeLogin(
                 .add("code_verifier", verifier)
                 .build()
             http.newCall(Request.Builder().url(DrimeConfig.TOKEN_URL).post(body).build()).execute().use { response ->
-                val text = response.body?.string().orEmpty()
+                val text = response.body.string().orEmpty()
                 if (!response.isSuccessful) {
                     val reason = runCatching { JSONObject(text).optString("error") }.getOrNull().orEmpty()
                     throw DrimeException("Drime didn't accept the sign-in ($reason). Try again.")
