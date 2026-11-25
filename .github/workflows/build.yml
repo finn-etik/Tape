@@ -45,14 +45,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -x
           gh release delete latest-build --yes --cleanup-tag || true
-          for attempt in 1 2 3; do
-            gh release create latest-build tape-debug.apk \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              --title "Latest build" \
-              --notes "Debug build of ${GITHUB_SHA::7}. Install on Android by opening tape-debug.apk." && exit 0
-            echo "Release attempt $attempt failed; retrying"; sleep $((attempt * 10))
-            gh release delete latest-build --yes --cleanup-tag || true
-          done
-          exit 1
+          git tag -f latest-build "$GITHUB_SHA"
+          git push -f origin latest-build
+          gh api "repos/$GITHUB_REPOSITORY/releases" -X POST \
+            -f tag_name=latest-build \
+            -f name="Latest build" \
+            -f body="Debug build of ${GITHUB_SHA::7}. Install on Android by opening tape-debug.apk." \
+            -F prerelease=true -i | head -30
+          gh release upload latest-build tape-debug.apk --clobber
