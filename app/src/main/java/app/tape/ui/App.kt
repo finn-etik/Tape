@@ -23,6 +23,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -92,6 +97,7 @@ fun TapeRoot() {
 /** The tab names are the title: large, quiet, the current one in ink. */
 @Composable
 private fun Header(selected: Tab, onSelect: (Tab) -> Unit) {
+    var about by remember { mutableStateOf(false) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -110,5 +116,13 @@ private fun Header(selected: Tab, onSelect: (Tab) -> Unit) {
             )
             Spacer(Modifier.width(20.dp))
         }
+        Spacer(Modifier.weight(1f))
+        Icon(
+            Icons.Outlined.Info,
+            contentDescription = "About TAPE",
+            tint = Muted.copy(alpha = 0.6f),
+            modifier = Modifier.padding(bottom = 6.dp).size(20.dp).quietClick { about = true },
+        )
     }
+    if (about) AboutSheet(onDismiss = { about = false })
 }

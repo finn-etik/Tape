@@ -94,6 +94,12 @@ constant-bitrate seeking.
 Before release, Drime reviews the app (publisher name, description, website, privacy policy);
 until then it works for up to 25 users. See <https://docs.drime.cloud/oauth/going-to-production.md>.
 
+## Web preview
+
+`preview/index.html` is a clickable copy of the app's screens that runs in any browser: open the
+file directly. Sample music and books play generated audio; you can add your own files; Drime is
+simulated with sample folders.
+
 ## Layout
 
 ```
@@ -104,6 +110,8 @@ app/src/main/java/app/tape/
   library/              LocalMusic (MediaStore), BookLibrary (SAF + Drime), ProgressStore
   playback/             PlaybackService (Media3 session), PlayerConnection (UI side), SleepTimer
   ui/                   Compose screens; theme/ holds the palette
+preview/index.html      Web preview of the UI
+.github/workflows/      CI: builds the APK and publishes "Latest build"
 ```
 
 ## Not yet
@@ -111,3 +119,9 @@ app/src/main/java/app/tape/
 - Chapters *inside* a single `.m4b` (one file plays as one long chapter for now).
 - Keeping a Drime book fully offline on purpose (today it's cached as you listen).
 - Android Auto browsing (needs a `MediaLibraryService`).
+
+## License
+
+TAPE is released under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE).
+Every library it uses is listed with its license in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md),
+and the app shows them under the ⓘ in the top bar. All are Apache 2.0 or MIT; nothing copyleft.

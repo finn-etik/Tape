@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TAPE preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* VOICE  quiet, tactile, like a well-made pocket device
+   IDEA   the Android app itself, running in a phone body on the desk
+   PICTURE the phone, centred; a short note card beside it on wide screens
+   COLOUR paper, ink, one moss accent (the app's own palette), light and dark
+   TYPE   Roboto, as Android draws the app; four sizes
+   LAYOUT phone + notes side by side above 900px, phone full-bleed on mobile */
+:root{color-scheme:light dark;
+--desk:light-dark(#E4DFD3,#0A0908);--paper:light-dark(#F3F0E8,#121110);--surface:light-dark(#FBF9F4,#1B1A18);
+--cont:light-dark(#F8F5EE,#1B1A18);--high:light-dark(#FFFDF8,#211F1D);--sv:light-dark(#E6E1D6,#262421);
+--ink:light-dark(#1B1A17,#EEEAE1);--muted:light-dark(#8C877D,#8F897E);--outline:light-dark(#CFC9BC,#3A3733);
+--line:light-dark(#E1DCD1,#2A2825);--accent:light-dark(#4F6B58,#9DB8A4);--err:light-dark(#A4473A,#E0907F)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--desk);color:var(--ink);font:16px/1.5 Roboto,system-ui,sans-serif;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stage{min-height:100%;display:flex;gap:56px;align-items:center;justify-content:center;padding:24px}
+.phone{position:relative;width:400px;height:min(840px,calc(100dvh - 48px));min-height:620px;background:var(--paper);border-radius:40px;overflow:hidden;
+ box-shadow:0 0 0 10px light-dark(#1B1A17,#2A2825),0 30px 60px -20px rgba(0,0,0,.45);display:flex;flex-direction:column;flex:none}
+.notes{max-width:300px;font-size:15px;color:var(--muted)}
+.notes h1{font-size:32px;line-height:1.05;font-weight:500;color:var(--ink);margin:0 0 6px;letter-spacing:-.5px}
+.notes p{margin:0 0 14px}.notes ul{margin:0 0 18px;padding-left:18px}.notes li{margin:0 0 8px}.notes b{color:var(--ink);font-weight:500}
+@media(max-width:900px){.stage{flex-direction:column;gap:28px}.notes{max-width:400px}}
+@media(max-width:600px){.stage{padding:0;gap:0}.phone{width:100%;height:100dvh;min-height:0;border-radius:0;box-shadow:none}.notes{padding:28px 24px 48px;max-width:none}}
+.sbar{display:flex;justify-content:space-between;padding:12px 28px 0;font-size:13px;font-weight:500;flex:none}
+.sbar i{display:inline-block;width:22px;height:11px;border:1.5px solid currentColor;border-radius:3px;position:relative;vertical-align:-1px}
+.sbar i:after{content:"";position:absolute;inset:1.5px 5px 1.5px 1.5px;background:currentColor;border-radius:1px}
+.gbar{height:22px;flex:none;display:grid;place-items:center}.gbar:after{content:"";width:108px;height:4px;border-radius:2px;background:var(--ink);opacity:.35}
+.tabs{display:flex;gap:20px;padding:18px 24px 8px;flex:none}
+.tabs button{font-size:26px;line-height:34px;letter-spacing:-.6px;color:color-mix(in srgb,var(--muted) 55%,transparent);transition:color .2s}
+.tabs button[aria-current=true]{color:var(--ink);font-weight:500}
+main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:none}main::-webkit-scrollbar{display:none}
+svg.i{width:24px;height:24px;fill:currentColor;flex:none}
+.ib{width:48px;height:48px;display:grid;place-items:center;border-radius:50%}.ib:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.row{display:flex;align-items:center;gap:14px;padding:10px 24px;width:100%;text-align:left;cursor:pointer;user-select:none}
+.row:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.grow{flex:1;min-width:0}.t{font-size:16px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:13px;line-height:18px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num{font-size:13px;color:var(--muted);width:32px;flex:none}.dur{font-size:13px;color:var(--muted);white-space:nowrap}
+.art{position:relative;display:grid;place-items:center;background:var(--sv);color:var(--muted);font-weight:500;overflow:hidden;flex:none}
+.art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.bar{display:flex;align-items:center;padding:8px 18px}
+.seg{display:flex;gap:6px}.seg button{font-size:14px;font-weight:500;padding:7px 14px;border-radius:99px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.link{font-size:14px;font-weight:500;color:var(--muted);padding:10px 12px;border-radius:99px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:99px;background:var(--ink);color:var(--paper);font-size:14px;font-weight:500}
+.pill svg{width:18px;height:18px}.pill.o{background:none;color:var(--ink);box-shadow:inset 0 0 0 1px var(--outline)}.pill[disabled]{opacity:.3;cursor:default}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 18px;padding:8px 24px 24px}
+.grid .tile{text-align:left;cursor:pointer}.grid .art{width:100%;aspect-ratio:1;border-radius:10px;font-size:18px;margin-bottom:10px}
+.tt{font-size:14px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.label{font-size:11px;letter-spacing:1.2px;font-weight:500;color:var(--muted);padding:12px 24px;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.hair{height:2px;border-radius:2px;background:var(--line);overflow:hidden}.hair>i{display:block;height:100%;background:var(--accent)}
+.empty{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px}
+.empty h2,.h2{font-size:22px;line-height:28px;font-weight:500;letter-spacing:-.3px;margin:0 0 8px;color:var(--ink)}
+.empty p{color:var(--muted);font-size:14px;margin:0 0 28px;max-width:320px}
+.card{margin:0 16px;padding:12px;border-radius:16px;background:var(--high);display:flex;align-items:center;gap:16px;cursor:pointer}
+.round{width:48px;height:48px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;flex:none}
+.back{display:flex;align-items:center;padding:4px 8px 0}.back .s{font-size:14px;font-weight:500;flex:1}
+.spin{width:14px;height:14px;border:1.5px solid var(--muted);border-right-color:transparent;border-radius:50%;animation:r .8s linear infinite;flex:none}
+@keyframes r{to{transform:rotate(1turn)}}
+.crumbs{display:flex;align-items:center;padding:0 4px 0 18px}.crumbs .path{flex:1;display:flex;overflow-x:auto;white-space:nowrap;scrollbar-width:none;align-items:center}
+.crumbs .path button{font-size:14px;font-weight:500;color:var(--muted);padding:12px 6px}.crumbs .path button:last-child{color:var(--ink)}
+.crumbs .path span{color:color-mix(in srgb,var(--muted) 50%,transparent)}
+.note{font-size:13px;color:var(--accent);padding:4px 24px}
+.field{width:100%;font:16px Roboto,system-ui;padding:16px;border-radius:4px;border:1px solid var(--outline);background:transparent;color:var(--ink)}
+.field.bad{border-color:var(--err)}
+.mini{flex:none;background:var(--cont);cursor:pointer}.mini .hair>i{background:var(--ink)}
+.mini .row{padding:10px 8px 10px 16px}
+.np{position:absolute;inset:0;background:var(--paper);display:flex;flex-direction:column;align-items:center;padding:40px 28px 28px;transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);z-index:5}
+.np.open{transform:none}
+.np .top{display:flex;align-items:center;width:100%}.np .top .s{flex:1;text-align:center;font-size:11px;letter-spacing:1.2px;font-weight:500;text-transform:uppercase}
+.np .art{width:100%;max-width:340px;aspect-ratio:1;border-radius:14px;font-size:40px;margin:auto 0 24px}
+.np .meta{width:100%}.np .meta .h2{margin:0 0 4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.scrub{width:100%;height:28px;position:relative;cursor:pointer;touch-action:none;margin-top:16px}
+.scrub:before{content:"";position:absolute;left:0;right:0;top:13px;height:2px;border-radius:2px;background:var(--line)}
+.scrub .f{position:absolute;left:0;top:13px;height:2px;border-radius:2px;background:var(--ink)}
+.scrub .d{position:absolute;top:14px;width:9px;height:9px;margin:-4.5px;border-radius:50%;background:var(--ink);transition:width .15s,height .15s,margin .15s}
+.scrub.drag .d{width:16px;height:16px;margin:-8px}
+.times{display:flex;justify-content:space-between;width:100%;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.transport{display:flex;justify-content:space-between;align-items:center;width:100%;margin:16px 0 auto}
+.big{width:76px;height:76px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center}.big svg{width:36px;height:36px}
+.ctl{width:56px;height:56px;display:grid;place-items:center;border-radius:50%}.ctl:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.ctl.l svg{width:32px;height:32px}.ctl.m svg{width:34px;height:34px}.ctl.sm svg{width:22px;height:22px}
+.chips{display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:28px}
+.chip{display:flex;align-items:center;gap:6px;padding:10px 12px;border-radius:99px;font-size:14px;font-weight:500;color:var(--muted)}
+.chip svg{width:18px;height:18px}.on{color:var(--accent)!important}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);z-index:8;opacity:0;transition:opacity .2s}.scrim.show{opacity:1}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:72%;overflow:auto;background:var(--surface);border-radius:28px 28px 0 0;z-index:9;padding:10px 0 24px;transform:translateY(100%);transition:transform .25s}
+.sheet.show{transform:none}.sheet:before{content:"";display:block;width:32px;height:4px;border-radius:2px;background:var(--outline);margin:6px auto 14px}
+.sheet h3{font-size:16px;font-weight:500;margin:0;padding:8px 24px}
+.menu{position:absolute;z-index:10;min-width:200px;max-width:280px;background:var(--high);border-radius:8px;padding:8px 0;box-shadow:0 8px 28px rgba(0,0,0,.22)}
+.menu button{display:block;width:100%;text-align:left;padding:12px 16px;font-size:15px}.menu button:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.menu .dim{color:var(--muted)}
+.reset{font-size:14px;font-weight:500;color:var(--ink);padding:10px 16px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--outline)}
+@media(prefers-reduced-motion:reduce){.np,.sheet,.scrim{transition:none}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone" id="phone">
+    <div class="sbar"><span id="clock">9:41</span><span><i></i></span></div>
+    <nav class="tabs" id="tabs"></nav>
+    <main id="view"></main>
+    <div id="mini"></div>
+    <div class="gbar"></div>
+    <section class="np" id="np" aria-label="Now playing"></section>
+    <div id="layer"></div>
+  </div>
+  <aside class="notes">
+    <h1>TAPE</h1>
+    <p>A working preview of the Android app, to review before building it.</p>
+    <ul>
+      <li><b>Audio really plays.</b> The sample tracks are generated in your browser. To hear your own, use <b>Add files</b> in Music, or <b>Choose folder</b> in Books.</li>
+      <li><b>Drime is simulated.</b> Paste any token of 8+ characters to see sample folders. Nothing leaves your browser.</li>
+      <li>Things to try: resume a book after 2 minutes (it steps back 10 s), change a book's speed, set a 1-minute sleep timer, and add a Drime folder to Books.</li>
+      <li>Progress and settings are saved in this browser only.</li>
+    </ul>
+    <button class="reset" id="reset">Reset preview</button>
+  </aside>
+</div>
+<input type="file" id="pickFiles" accept="audio/*" multiple hidden>
+<input type="file" id="pickFolder" webkitdirectory multiple hidden>
+<script>
+{
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={get(k,d){try{const v=localStorage.getItem('tape.'+k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem('tape.'+k,JSON.stringify(v))}catch{}}};
+const nat=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'});
+const fmt=s=>{s=Math.max(0,Math.floor(s||0));const h=s/3600|0,m=(s%3600)/60|0,x=s%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
+const mins=s=>{const m=Math.round(s/60);return m>=60?`${m/60|0} h ${m%60} min`:`${m} min`};
+const pretty=n=>n.replace(/\.[^.]+$/,'').replace(/_/g,' ').trim()||n;
+const split=n=>{const i=n.indexOf(' - ');return i>0?[n.slice(i+3).trim(),n.slice(0,i).trim()]:[n.trim(),null]};
+const hash=s=>{let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0};
+const rng=seed=>{let s=seed>>>0||1;return()=>{s=Math.imul(s^s>>>15,1|s);s^=s+Math.imul(s^s>>>7,61|s);return((s^s>>>14)>>>0)/4294967296}};
+const P_={play:'M8 5.14v13.72c0 .79.87 1.27 1.54.84l10.79-6.86a1 1 0 0 0 0-1.69L9.54 4.3A1 1 0 0 0 8 5.14z',pause:'M7 19h3a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1zm7-13v12a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-3a1 1 0 0 0-1 1z',
+prev:'M7 6a1 1 0 0 1 1 1v10a1 1 0 0 1-2 0V7a1 1 0 0 1 1-1zm3.66 6.82 5.77 4.07c.66.47 1.58 0 1.58-.82V7.93c0-.81-.91-1.29-1.58-.82l-5.77 4.07a1 1 0 0 0 0 1.64z',
+next:'M7.58 16.89l5.77-4.07a1 1 0 0 0 0-1.64L7.58 7.11C6.91 6.65 6 7.12 6 7.93v8.14c0 .81.91 1.29 1.58.82zM16 7v10a1 1 0 0 0 2 0V7a1 1 0 0 0-2 0z',
+shuffle:'M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z',
+repeat:'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z',one:'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z',
+queue:'M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18A3 3 0 0 0 16 14a3 3 0 1 0 3 3V8h3V6h-5z',down:'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z',
+back:'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',more:'M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+moon:'M12.34 2.02C6.59 1.82 2 6.42 2 12c0 5.52 4.48 10 10 10 3.71 0 6.93-2.02 8.66-5.02-7.51-.25-12.09-8.43-8.32-14.96z',
+cloud:'M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z',
+folder:'M10.59 4.59A2 2 0 0 0 9.17 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-1.41-1.41z',
+eq:'M7 18h2V6H7v12zm4 4h2V2h-2v20zm-8-8h2v-4H3v4zm12 4h2V6h-2v12zm4-8v4h2v-4h-2z',close:'M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z',
+chev:'M9.29 6.71a1 1 0 0 0 0 1.41L13.17 12l-3.88 3.88a1 1 0 1 0 1.41 1.41l4.59-4.59a1 1 0 0 0 0-1.41L10.7 6.7a1 1 0 0 0-1.41.01z',
+rew:'M11.99 5V2.21c0-.45-.54-.67-.85-.35l-3.8 3.79c-.2.2-.2.51 0 .71l3.79 3.79c.32.31.86.09.86-.36V7c3.73 0 6.68 3.42 5.86 7.29-.47 2.27-2.31 4.1-4.57 4.57A6.01 6.01 0 0 1 6.04 13H4.02a8 8 0 1 0 7.97-8z',
+fwd:'M12.01 5V2.21c0-.45.54-.67.85-.35l3.8 3.79c.2.2.2.51 0 .71l-3.79 3.79c-.32.31-.86.09-.86-.36V7c-3.73 0-6.68 3.42-5.86 7.29.47 2.27 2.31 4.1 4.57 4.57A6.01 6.01 0 0 0 17.96 13h2.02a8 8 0 1 1-7.97-8z'};
+const ic=(n,extra='')=>`<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${P_[n]}"/>${extra}</svg>`;
+const icNum=(n,t)=>ic(n,`<text x="12" y="16.3" text-anchor="middle" font-size="6.6" font-weight="700" font-family="Roboto,sans-serif" fill="currentColor">${t}</text>`);
+
+/* ---------- generated covers + audio (sample content) ---------- */
+function cover(seed,h){const r=rng(seed),c=(s,l)=>`hsl(${h} ${s}% ${l}%)`,c2=(dh,s,l)=>`hsl(${(h+dh)%360} ${s}% ${l}%)`;
+ const sun=`<circle cx="${30+r()*40}" cy="${28+r()*18}" r="${10+r()*10}" fill="${c2(170,55,74)}"/>`;
+ let bands='';for(let i=0;i<4;i++){const y=52+i*12+r()*4,a=r()*8;bands+=`<path d="M0 ${y+a} C30 ${y-6} 60 ${y+8} 100 ${y-a} V100 H0Z" fill="${c(30+i*6,62-i*12)}"/>`}
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${c(25,84)}"/>${sun}${bands}</svg>`;
+ return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg)}
+const audioCache=new Map();
+function synth(seed,secs,kind){
+ const key=seed+':'+secs+':'+kind;if(audioCache.has(key))return audioCache.get(key);
+ const sr=22050,n=Math.floor(sr*secs),d=new Float32Array(n),r=rng(seed),book=kind==='book';
+ const base=[196,220,246.94,261.63,293.66][r()*5|0],scale=book?[0,2,4,7,9,12]:[0,2,3,5,7,8,10,12,14];
+ const beat=book?0.9+r()*.5:0.26+r()*.16,prog=[0,5,7,3].map(x=>x-(r()<.5?0:12)),len=Math.floor(sr*(book?2.4:1.3)),dec=book?1.6:3;
+ for(let t=0;t<secs;t+=beat){if(book&&r()<.3)continue;const root=prog[(t/(beat*8)|0)%4],f=base*2**((root+scale[r()*scale.length|0])/12)*(book?2:1),st=t*sr|0,amp=book?.15:.19,w=2*Math.PI*f/sr;
+  for(let i=0;i<len&&st+i<n;i++){const x=i/sr,e=Math.min(1,x*80)*Math.exp(-x*dec);d[st+i]+=amp*e*(Math.sin(w*i)+.3*Math.sin(2*w*i)+.1*Math.sin(3*w*i))}}
+ let ph=0;for(let i=0;i<n;i++){const x=i/sr,f=base/2*2**(prog[(x/(beat*8)|0)%4]/12);ph+=2*Math.PI*f/sr;d[i]+=.05*Math.sin(ph)*(.6+.4*Math.sin(x*.7));
+  const fade=Math.min(1,x/1.5,(secs-x)/2);d[i]*=Math.max(0,fade)}
+ const b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+ w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,d[i]))*32767,true);
+ const url=URL.createObjectURL(new Blob([b],{type:'audio/wav'}));audioCache.set(key,url);return url}
+
+/* ---------- sample library ---------- */
+const ALBUMS=[
+ {id:'a1',title:'Low Tide',artist:'Saltmarsh',hue:196,seed:11,tracks:['Grey Heron','Brackish','Eelgrass','Slack Water','Tern Season']},
+ {id:'a2',title:'Birch Light',artist:'Ida Moberg',hue:92,seed:23,tracks:['Morning Field','Lichen','Small Hours','Northern Road']},
+ {id:'a3',title:'Paper Lanterns',artist:'The Quiet Rooms',hue:30,seed:37,tracks:['Kindling','Lantern Supper','Under the Moss','Slow Boat','Embers']},
+ {id:'a4',title:'Harbour Radio',artist:'Various artists',hue:350,seed:53,tracks:['Fog Signal','Night Ferry','Shipping Forecast','Long Wave']},
+ {id:'a5',title:'Owl Hours',artist:'Saltmarsh',hue:220,seed:71,tracks:['Tawny','Dusk Count','Barn Loft']}];
+ALBUMS.forEach(a=>{a.art=cover(a.seed,a.hue);const r=rng(a.seed);a.songs=a.tracks.map((t,i)=>({id:`m:${a.id}:${i}`,title:t,artist:a.artist,album:a.title,art:a.art,len:Math.round(40+r()*32),gen:[a.seed*31+i,'music']}));a.songs.forEach(s=>s.secs=s.len)});
+const SAMPLE_BOOKS=[
+ {id:'l:lantern',title:'The Lantern Path',author:'Aino Berg',hue:34,seed:101,chapters:['Prologue','The Ferry','Salt and Ash','A House on Stilts','Winter Lamps','The Long Way Home']},
+ {id:'l:archipelago',title:'Notes from the Archipelago',author:null,hue:188,seed:131,chapters:['One','Two','Three','Four']}];
+function sampleBook(b){const r=rng(b.seed),art=cover(b.seed,b.hue);return{id:b.id,title:b.title,author:b.author,source:'local',art,chapters:b.chapters.map((t,i)=>{const len=Math.round(70+r()*50);return{id:`${b.id}:${i}`,title:t,len,secs:len,gen:[b.seed*17+i,'book']}})}}
+
+/* Drime: a pretend account so the flow can be tried. */
+let hid=0;const F=(name,children)=>({name,folder:true,hash:'h'+(++hid),children}),A=(name,mb)=>({name,hash:'h'+(++hid),mb,ext:name.split('.').pop().toUpperCase()}),I=name=>({name,hash:'h'+(++hid),image:true});
+const DRIME=F('Drime',[
+ F('Music',[F('Nils Ek - Winter Rooms',[A('01 Frost on the Window.mp3',7),A('02 Wood Stove.mp3',6),A('03 Ice Road.mp3',8),A('04 Thaw.mp3',5),I('cover.jpg')]),
+  F('Field recordings',[A('dawn_chorus_tyresta.flac',24),A('rain_on_tin_roof.flac',31),A('ferry_horn.m4a',3)])]),
+ F('Audiobooks',[F('Maja Lind - North Light',[A('01 - Departure.mp3',21),A('02 - The Lighthouse Keeper.mp3',24),A('03 - Storm Season.mp3',19),A('04 - North Light.mp3',22),I('cover.jpg')]),
+  F('Elsa Strand - The Quiet Year',[F('CD 1',[A('Track 1.mp3',30),A('Track 2.mp3',28)]),F('CD 2',[A('Track 1.mp3',27),A('Track 2.mp3',31)])]),
+  A('Harbour Tales - Short Stories.m4b',96)]),
+ F('Podcasts',[A('Episode 12 - Birding by ear.mp3',41),A('Episode 13 - Owls in winter.mp3',38)]),
+ F('Photos',[I('IMG_2041.jpg'),I('IMG_2042.jpg')])]);
+const NODES={};(function walk(n,parent,inBooks){n.parent=parent;n.book=inBooks;NODES[n.hash]=n;(n.children||[]).forEach(c=>walk(c,n,inBooks||n.name==='Audiobooks'))})(DRIME,null,false);
+const folderArt=n=>{const img=(n.children||[]).find(c=>c.image&&/^cover/i.test(c.name));return img?cover(hash(n.name),hash(n.name)%360):null};
+const drimeTrack=(f,folder)=>{const s=Math.round(45+rng(hash(f.hash))()*45);return{id:'drime:'+f.hash,title:pretty(f.name),artist:null,album:folder.parent?folder.name:null,art:folderArt(folder),len:s,secs:s,gen:[hash(f.hash),f.parent.book||folder.book?'book':'music'],cloud:true}};
+const audioIn=n=>(n.children||[]).filter(c=>!c.folder&&!c.image);
+function drimeBook(n){const files=[];audioIn(n).forEach(f=>files.push([f.name,f,n]));(n.children||[]).filter(c=>c.folder).forEach(s=>audioIn(s).forEach(f=>files.push([s.name+'/'+f.name,f,n])));
+ if(!files.length)return null;files.sort((a,b)=>nat(a[0],b[0]));const[title,author]=split(n.name);
+ return{id:'drime:'+n.hash,title,author,source:'drime:'+n.hash,cloud:true,art:folderArt(n),chapters:files.map(([,f])=>{const t=drimeTrack(f,n);t.gen[1]='book';return t})}}
+function shelfBooks(sh){const n=NODES[sh.hash];if(!n)return[];if(sh.asBook)return[drimeBook(n)].filter(Boolean);
+ return[...n.children.filter(c=>c.folder).map(drimeBook).filter(Boolean),...audioIn(n).map(f=>{const[title,author]=split(pretty(f.name)),t=drimeTrack(f,n);t.gen[1]='book';t.title=title;return{id:'drime:'+f.hash,title,author,cloud:true,source:'drime:'+sh.hash,art:null,chapters:[t]}})]}
+
+/* ---------- state ---------- */
+const S={tab:store.get('tab','music'),mode:'albums',album:null,book:null,path:[DRIME.hash],loading:false,toast:null,
+ musicAllowed:store.get('musicAllowed',false),booksSample:store.get('booksSample',false),connected:store.get('connected',false),shelves:store.get('shelves',[]),
+ userSongs:[],userBooks:[],tokenErr:null,connecting:false};
+let progress=store.get('progress',{});
+const saveProg=()=>store.set('progress',progress);
+const allSongs=()=>[...ALBUMS.flatMap(a=>a.songs),...S.userSongs].sort((a,b)=>nat(a.title,b.title));
+const albums=()=>S.userSongs.length?[...ALBUMS,{id:'you',title:'From this computer',artist:'Your files',art:null,songs:S.userSongs}]:ALBUMS;
+function books(){const list=[...(S.booksSample?SAMPLE_BOOKS.map(sampleBook):[]),...S.userBooks,...(S.connected?S.shelves.flatMap(shelfBooks):[])];
+ const seen=new Set();return list.filter(b=>!seen.has(b.id)&&seen.add(b.id)).sort((a,b)=>nat(a.title,b.title))}
+const findBook=id=>books().find(b=>b.id===id);
+const frac=(b,p)=>!p?0:p.f?1:Math.min(1,(p.c+(p.d?Math.min(1,p.p/p.d):0))/b.chapters.length);
+
+/* ---------- player ---------- */
+const au=new Audio();au.preload='auto';
+const P={queue:[],order:[],pos:-1,shuffle:false,repeat:'off',bookId:null,rate:1,pausedAt:0,loading:false,error:null,sleep:{mode:'off',endsAt:0}};
+const cur=()=>P.queue[P.order[P.pos]];
+const srcOf=async t=>{if(t.url)return t.url;await new Promise(r=>setTimeout(r,30));return synth(t.gen[0],t.secs,t.gen[1])};
+function play(queue,start=0,startSec=0,opt={}){
+ if(!queue.length)return;P.queue=queue;P.bookId=opt.bookId||null;P.shuffle=!!opt.shuffle&&!P.bookId;P.order=[...queue.keys()];
+ if(P.shuffle){for(let i=P.order.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[P.order[i],P.order[j]]=[P.order[j],P.order[i]]}P.pos=0}else P.pos=start;
+ P.rate=P.bookId?(progress[P.bookId]?.s||1):1;P.pausedAt=0;loadCurrent(startSec,true)}
+async function loadCurrent(startSec=0,auto=true){
+ const t=cur();if(!t)return;P.loading=true;P.error=null;paint();
+ try{const url=await srcOf(t);if(t!==cur())return;au.src=url;au.defaultPlaybackRate=au.playbackRate=P.rate;
+  await new Promise((ok,bad)=>{au.onloadedmetadata=ok;au.onerror=bad});au.currentTime=Math.min(startSec,Math.max(0,au.duration-1));
+  if(auto)await au.play().catch(()=>{})}
+ catch{P.error='This format can\'t be played.'}
+ P.loading=false;session();save();paint();if(S.tab==='books')render()}
+function toggle(){if(!cur())return;if(!au.paused){au.pause();P.pausedAt=Date.now();return}
+ if(P.bookId&&P.pausedAt&&Date.now()-P.pausedAt>120000)au.currentTime=Math.max(0,au.currentTime-10);
+ if(au.ended)au.currentTime=0;au.play().catch(()=>{})}
+function step(d,auto){let p=P.pos+d;if(p>=P.order.length){if(P.repeat==='all')p=0;else return false}if(p<0)p=0;P.pos=p;loadCurrent(0,true);return true}
+const next=()=>step(1),prev=()=>{if(au.currentTime>3)au.currentTime=0;else step(-1)};
+au.addEventListener('ended',()=>{
+ if(P.repeat==='one'){au.currentTime=0;au.play();return}
+ if(P.sleep.mode==='chapter'){P.sleep.mode='off';if(P.pos<P.order.length-1){P.pos++;loadCurrent(0,false)}return}
+ if(!step(1)){if(P.bookId){progress[P.bookId]={c:0,p:0,d:0,s:P.rate,u:Date.now(),f:true};saveProg();render()}paint()}});
+['play','pause','ratechange','waiting','playing'].forEach(e=>au.addEventListener(e,()=>{if(e==='pause')save();paint();if(e!=='ratechange'&&S.tab==='books')render()}));
+let lastSave=0;au.addEventListener('timeupdate',()=>{if(Date.now()-lastSave>2000)save();tick()});
+function save(){lastSave=Date.now();if(!P.bookId||!cur()||au.ended)return;progress[P.bookId]={c:P.pos,p:au.currentTime,d:au.duration||0,s:P.rate,u:Date.now(),f:false};saveProg()}
+function setRate(r){P.rate=r;au.defaultPlaybackRate=au.playbackRate=r;save()}
+let sleepTimer=null;
+function sleepStart(m){sleepStop();P.sleep={mode:'at',endsAt:Date.now()+m*60000};sleepTimer=setInterval(()=>{const left=(P.sleep.endsAt-Date.now())/1000;
+ if(left<=12)au.volume=Math.max(0,left/12);if(left<=0){au.pause();sleepStop()}},250);paint()}
+function sleepStop(){clearInterval(sleepTimer);sleepTimer=null;au.volume=1;P.sleep={mode:'off',endsAt:0};paint()}
+function session(){const t=cur(),ms=navigator.mediaSession;if(!ms||!t)return;try{
+ ms.metadata=new MediaMetadata({title:t.title,artist:t.artist||(P.bookId?findBook(P.bookId)?.author||'':''),album:t.album||'',artwork:t.art?[{src:t.art,sizes:'512x512',type:'image/svg+xml'}]:[]});
+ [['play',toggle],['pause',toggle],['previoustrack',prev],['nexttrack',next],['seekbackward',()=>au.currentTime-=10],['seekforward',()=>au.currentTime+=30]].forEach(([a,f])=>ms.setActionHandler(a,f))}catch{}}
+
+/* ---------- views ---------- */
+const art=(src,label,size,rad,fs=14)=>`<div class="art" style="width:${size};height:${size};border-radius:${rad}px;font-size:${fs}px">${esc((label||'·').trim()[0]?.toUpperCase()||'·')}${src?`<img src="${esc(src)}" alt="">`:''}</div>`;
+const empty=(h,p,btn,act,extra='')=>`<div class="empty"><h2>${esc(h)}</h2><p>${esc(p)}</p>${btn?`<button class="pill" data-act="${act}">${esc(btn)}</button>`:''}${extra}</div>`;
+const pill=(t,act,icon,o,attrs='')=>`<button class="pill${o?' o':''}" data-act="${act}" ${attrs}>${icon?ic(icon):''}${esc(t)}</button>`;
+const backBar=(t,act,trail='')=>`<div class="back"><button class="ib" data-act="${act}" aria-label="Back">${ic('back')}</button><span class="s">${esc(t)}</span>${trail}</div>`;
+const songRow=(s,act,i,showArt,num)=>`<div class="row" data-act="${act}" data-i="${i}">${showArt?art(s.art,s.album,'44px',6):`<span class="num">${num}</span>`}<div class="grow"><div class="t">${esc(s.title)}</div>${showArt?`<div class="s">${esc(s.artist)}</div>`:''}</div><span class="dur">${s.len?fmt(s.len):'–'}</span></div>`;
+
+function musicView(){
+ if(!S.musicAllowed)return empty('Your music, here','TAPE plays the music stored on this phone. Allow it to see your audio files.','Allow access','allow');
+ if(S.album){const a=albums().find(x=>x.id===S.album);if(!a){S.album=null;return musicView()}const total=a.songs.reduce((t,s)=>t+(s.len||0),0);
+  return backBar('Albums','closeAlbum')+`<div style="display:flex;align-items:flex-end;gap:18px;padding:12px 24px">${art(a.art,a.title,'132px',10,24)}<div class="grow"><div class="h2">${esc(a.title)}</div><div class="s" style="font-size:14px">${esc(a.artist)}</div><div class="s">${a.songs.length} songs · ${mins(total)}</div></div></div>
+  <div style="display:flex;gap:10px;padding:8px 24px 16px">${pill('Play','playAlbum','play')}${pill('Shuffle','shuffleAlbum','shuffle',1)}</div>`+a.songs.map((s,i)=>songRow(s,'playAlbumAt',i,false,i+1)).join('')}
+ const top=`<div class="bar"><div class="seg"><button aria-pressed="${S.mode==='albums'}" data-act="mode" data-m="albums">Albums</button><button aria-pressed="${S.mode==='songs'}" data-act="mode" data-m="songs">Songs</button></div><span class="grow"></span><button class="link" data-act="addFiles">Add files</button><button class="link" data-act="shuffleAll">Shuffle</button></div>`;
+ if(S.mode==='albums')return top+`<div class="grid">${albums().map(a=>`<div class="tile" data-act="openAlbum" data-id="${a.id}">${art(a.art,a.title,'100%',10,18)}<div class="tt">${esc(a.title)}</div><div class="s">${esc(a.artist)}</div></div>`).join('')}</div>`;
+ return top+allSongs().map((s,i)=>songRow(s,'playSong',i,true)).join('')+'<div style="height:24px"></div>'}
+
+function booksView(){
+ const list=books();
+ if(S.book){const b=findBook(S.book);if(!b){S.book=null;return booksView()}const p=progress[b.id],curC=p&&!p.f?p.c:-1,here=P.bookId===b.id,playing=here&&!au.paused;
+  const label=playing?'Pause':p&&!p.f?'Resume':p?.f?'Listen again':'Start listening';
+  return backBar('Books','closeBook',`<button class="ib" data-act="bookMenu" aria-label="More">${ic('more')}</button>`)+
+  `<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:8px 24px">${art(b.art,b.title,'200px',12,40)}<div class="h2" style="margin-top:20px">${esc(b.title)}</div>${b.author?`<div class="s" style="font-size:14px">${esc(b.author)}</div>`:''}
+  ${p&&!p.f?`<div class="hair" style="width:60%;margin-top:20px"><i style="width:${frac(b,p)*100}%"></i></div>`:''}<div style="margin-top:20px">${pill(label,'bookPlay',playing?'pause':'play')}</div></div>`+
+  (b.chapters.length>1?`<div class="label" style="padding-top:28px">${b.chapters.length} chapters</div>`+b.chapters.map((c,i)=>`<div class="row" data-act="chapter" data-i="${i}" style="padding:12px 24px"><span class="num" style="width:36px${i===curC?';color:var(--accent)':''}">${i+1}</span><span class="t grow" style="color:${i===curC?'var(--accent)':i<curC?'var(--muted)':'var(--ink)'}">${esc(c.title)}</span>${i===curC?`<span class="dur on">${fmt(p.p)}</span>`:''}</div>`).join(''):'')+'<div style="height:32px"></div>'}
+ if(!list.length&&!S.booksSample&&!S.userBooks.length&&!S.shelves.length)return empty('Audiobooks','Choose the folder where your audiobooks live. Each folder inside it becomes a book. You can also add folders from Drime.','Choose folder','chooseFolder');
+ const cont=list.map(b=>[b,progress[b.id]]).filter(([,p])=>p&&!p.f).sort((x,y)=>y[1].u-x[1].u)[0];
+ let h='';
+ if(cont){const[b,p]=cont;h+=`<div class="label">Continue</div><div class="card" data-act="openBook" data-id="${esc(b.id)}">${art(b.art,b.title,'76px',8,20)}<div class="grow"><div class="t" style="font-weight:500;white-space:normal">${esc(b.title)}</div><div class="s">${b.chapters.length>1?`Chapter ${p.c+1} of ${b.chapters.length}`:fmt(p.p)}</div><div class="hair" style="margin-top:10px"><i style="width:${frac(b,p)*100}%"></i></div></div><button class="round" data-act="resume" data-id="${esc(b.id)}" aria-label="Resume">${ic('play')}</button></div>`}
+ h+=`<div class="label">Library</div>`+(list.length?'':`<p class="s" style="padding:0 24px;white-space:normal">No books found yet. Put each book in its own folder.</p>`);
+ h+=list.map(b=>{const p=progress[b.id],meta=[b.author,p?.f?'Finished':p?Math.round(frac(b,p)*100)+'%':b.chapters.length>1?b.chapters.length+' chapters':null].filter(Boolean).join(' · ');
+  return`<div class="row" data-act="openBook" data-id="${esc(b.id)}">${art(b.art,b.title,'56px',6,16)}<div class="grow"><div class="t">${esc(b.title)}</div>${meta?`<div class="s">${esc(meta)}</div>`:''}${p&&!p.f?`<div class="hair" style="width:50%;margin-top:6px"><i style="width:${frac(b,p)*100}%"></i></div>`:''}</div>${b.cloud?`<span style="color:var(--muted);opacity:.6">${ic('cloud').replace('class="i"','class="i" style="width:16px;height:16px"')}</span>`:''}</div>`}).join('');
+ h+=`<div class="label" style="padding-top:28px">Sources</div>`;
+ const local=S.booksSample?'Audiobooks (sample)':S.userBooks.length?'Folder from this computer':null;
+ h+=`<div class="row" data-act="chooseFolder" style="padding:6px 12px 6px 24px"><div class="grow"><div class="t" style="font-size:14px">${esc(local||'No folder on this phone')}</div><div class="s">${local?'This phone · change':'Choose folder'}</div></div>${local?`<button class="ib" data-act="clearLocal" aria-label="Remove source">${ic('close')}</button>`:''}</div>`;
+ h+=S.shelves.map(sh=>`<div class="row" style="padding:6px 12px 6px 24px;cursor:default"><div class="grow"><div class="t" style="font-size:14px">${esc(sh.name)}</div><div class="s">${sh.asBook?'Drime · single book':'Drime · library folder'}${S.connected?'':' · not connected'}</div></div><span style="color:var(--muted);opacity:.6">${ic('cloud').replace('class="i"','class="i" style="width:16px;height:16px"')}</span><button class="ib" data-act="removeShelf" data-h="${sh.hash}" aria-label="Remove source">${ic('close')}</button></div>`).join('');
+ return h+`<button class="link" style="margin:8px 12px 32px" data-act="rescan">Look for new books</button>`}
+
+function drimeView(){
+ if(!S.connected)return`<div class="empty" style="align-items:stretch;text-align:left;padding:0 32px"><h2>Your cloud library</h2><p style="margin:0 0 24px">Stream the music and audiobooks you keep in Drime. Paste an access token to connect.</p>
+ <form id="tokenForm"><input class="field${S.tokenErr?' bad':''}" id="token" type="password" autocomplete="off" placeholder="Paste your Drime token" aria-label="Drime access token" ${S.connecting?'disabled':''}>
+ ${S.tokenErr?`<div class="s" style="color:var(--err);margin-top:8px;white-space:normal">${esc(S.tokenErr)}</div>`:''}<div style="margin-top:16px"><button class="pill" type="submit" ${S.connecting?'disabled':''}>${S.connecting?'Connecting…':'Connect'}</button></div></form>
+ <div class="tt" style="margin-top:28px">How to make a token</div><div class="s" style="white-space:normal;margin-top:6px">In Drime, open Settings › Developers › Create token. Choose Restricted, set Files and Folders to Read, and leave the rest at No access. TAPE can then only read, never change or delete.</div>
+ <div class="s" style="white-space:normal;margin-top:20px;color:var(--accent)">Preview: any token of 8+ characters shows sample folders. Nothing is sent anywhere.</div></div>`;
+ const here=NODES[S.path.at(-1)],kids=(here.children||[]),folders=kids.filter(c=>c.folder).sort((a,b)=>nat(a.name,b.name)),tracks=kids.filter(c=>!c.folder&&!c.image).sort((a,b)=>nat(a.name,b.name));
+ let h=`<div class="crumbs"><div class="path">${S.path.map((x,i)=>(i?'<span>/</span>':'')+`<button data-act="crumb" data-i="${i}">${esc(NODES[x].name)}</button>`).join('')}</div>${S.loading?'<span class="spin"></span>':''}<button class="ib" data-act="drimeMenu" aria-label="More" style="color:var(--muted)">${ic('more')}</button></div>`;
+ if(S.toast)h+=`<div class="note">${esc(S.toast)}</div>`;
+ if(S.loading&&!kids.length)return h;
+ if(!folders.length&&!tracks.length)return h+`<div style="height:calc(100% - 60px)">${empty('Nothing to play here','This folder has no audio files or subfolders.')}</div>`;
+ if(tracks.length)h+=`<div style="display:flex;gap:10px;padding:10px 24px">${pill('Play','playFolder','play')}${pill('Shuffle','shuffleFolder','shuffle',1)}</div>`;
+ h+=folders.map(f=>`<div class="row" data-act="open" data-h="${f.hash}" data-long="${f.hash}" style="padding:4px 4px 4px 24px"><span style="color:var(--muted)">${ic('folder').replace('class="i"','class="i" style="width:20px;height:20px"')}</span><span class="t grow" style="margin-left:2px">${esc(f.name)}</span><button class="ib" data-act="folderMenu" data-h="${f.hash}" aria-label="Folder options" style="color:var(--muted)">${ic('more')}</button></div>`).join('');
+ h+=tracks.map((f,i)=>`<div class="row" data-act="playFile" data-i="${i}" style="padding:12px 24px"><span style="color:var(--muted);opacity:.7">${ic('eq').replace('class="i"','class="i" style="width:20px;height:20px"')}</span><div class="grow" style="margin-left:2px"><div class="t">${esc(pretty(f.name))}</div><div class="s">${esc(f.ext)} · ${f.mb} MB</div></div></div>`).join('');
+ return h+'<div style="height:24px"></div>'}
+
+function render(){
+ $('#tabs').innerHTML=['music','books','drime'].map(t=>`<button data-act="tab" data-t="${t}" aria-current="${S.tab===t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('');
+ const tokenVal=$('#token')?.value;
+ const v=$('#view'),y=v.scrollTop,keep=v.dataset.k===S.tab+S.album+S.book+S.path.join();
+ v.innerHTML=S.tab==='music'?musicView():S.tab==='books'?booksView():drimeView();
+ v.dataset.k=S.tab+S.album+S.book+S.path.join();if(keep)v.scrollTop=y;
+ if(tokenVal&&$('#token')&&!S.connecting)$('#token').value=tokenVal;
+ const f=$('#tokenForm');if(f)f.onsubmit=e=>{e.preventDefault();connect($('#token').value)}}
+
+/* ---------- mini + now playing ---------- */
+function npInfo(){const t=cur();if(!t)return null;const b=P.bookId?findBook(P.bookId):null;
+ return{t,title:t.title,sub:b?(b.chapters.length>1?`Chapter ${P.pos+1} of ${b.chapters.length}`:b.title):[t.artist,t.album].filter(Boolean).join(' · '),coll:b?b.title:(t.album||'Now playing'),isBook:!!b,art:b?b.art:t.art}}
+function paint(){
+ const n=npInfo(),mini=$('#mini'),np=$('#np');
+ if(!n){mini.innerHTML='';np.classList.remove('open');return}
+ const playing=!au.paused,busy=P.loading||(!au.paused&&au.readyState<3);
+ mini.innerHTML=`<div class="mini" data-act="openNP"><div class="hair"><i class="js-fill"></i></div><div class="row">${art(n.art,n.title,'44px',6)}<div class="grow"><div class="tt">${esc(n.title)}</div>${P.error||n.sub?`<div class="s"${P.error?' style="color:var(--err)"':''}>${esc(P.error||(n.isBook?n.coll:n.sub))}</div>`:''}</div>
+ <button class="ib" data-act="toggle" aria-label="${playing?'Pause':'Play'}">${ic(playing?'pause':'play')}</button>${n.isBook?`<button class="ib" data-act="fwd" aria-label="Forward 30 seconds">${icNum('fwd',30)}</button>`:`<button class="ib" data-act="next" aria-label="Next">${ic('next')}</button>`}</div></div>`;
+ const sl=P.sleep,left=Math.max(0,(sl.endsAt-Date.now())/1000|0),sleepLabel=sl.mode==='off'?'Sleep':sl.mode==='chapter'?(n.isBook?'End of chapter':'End of track'):`${left/60|0}:${String(left%60).padStart(2,'0')}`;
+ np.innerHTML=`<div class="top"><button class="ib" data-act="closeNP" aria-label="Close">${ic('down')}</button><span class="s">${esc(n.coll)}</span><button class="ib" data-act="queue" aria-label="${n.isBook?'Chapters':'Queue'}">${ic('queue')}</button></div>
+ ${art(n.art,n.title,'',14,40)}
+ <div class="meta"><div class="h2">${esc(n.title)}</div><div class="s" style="font-size:14px">${esc(n.sub)}</div>${P.error?`<div class="s" style="color:var(--err);margin-top:6px">${esc(P.error)}</div>`:''}</div>
+ <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="Position"><div class="f js-fill"></div><div class="d"></div></div>
+ <div class="times"><span id="tNow">0:00</span><span id="tLeft"></span></div>
+ <div class="transport">${n.isBook?
+  `<button class="ctl sm" data-act="prev" aria-label="Previous chapter">${ic('prev')}</button><button class="ctl l" data-act="back" aria-label="Back 10 seconds">${icNum('rew',10)}</button>${bigBtn(playing,busy)}<button class="ctl l" data-act="fwd" aria-label="Forward 30 seconds">${icNum('fwd',30)}</button><button class="ctl sm" data-act="next" aria-label="Next chapter">${ic('next')}</button>`:
+  `<span style="width:48px"></span><button class="ctl m" data-act="prev" aria-label="Previous">${ic('prev')}</button>${bigBtn(playing,busy)}<button class="ctl m" data-act="next" aria-label="Next">${ic('next')}</button><span style="width:48px"></span>`}</div>
+ <div class="chips">${n.isBook?`<button class="chip${P.rate!==1?' on':''}" data-act="speed">${P.rate}×</button>`:`<button class="ib${P.shuffle?' on':''}" data-act="shuffleT" aria-label="Shuffle" style="color:var(--muted)">${ic('shuffle')}</button>`}
+ <button class="chip${sl.mode!=='off'?' on':''}" data-act="sleep">${ic('moon')}${sleepLabel}</button>
+ ${n.isBook?'<span style="width:48px"></span>':`<button class="ib${P.repeat!=='off'?' on':''}" data-act="repeatT" aria-label="Repeat" style="color:var(--muted)">${ic(P.repeat==='one'?'one':'repeat')}</button>`}</div>`;
+ tick()}
+const bigBtn=(playing,busy)=>`<button class="big" data-act="toggle" aria-label="${playing?'Pause':'Play'}">${busy?'<span class="spin" style="width:26px;height:26px;border-width:2px;border-color:var(--paper);border-right-color:transparent"></span>':ic(playing?'pause':'play')}</button>`;
+let dragF=null;
+function tick(){const d=au.duration||cur()?.secs||0,t=dragF!=null?dragF*d:au.currentTime,f=d?Math.min(1,t/d):0;
+ document.querySelectorAll('.js-fill').forEach(e=>e.style.width=f*100+'%');const dot=$('#scrub .d');if(dot)dot.style.left=f*100+'%';
+ const a=$('#tNow'),b=$('#tLeft');if(a){a.textContent=fmt(t);b.textContent=d?'−'+fmt(d-t):''}}
+$('#np').addEventListener('pointerdown',e=>{const s=e.target.closest('#scrub');if(!s)return;s.setPointerCapture(e.pointerId);s.classList.add('drag');
+ const at=ev=>{const r=s.getBoundingClientRect();dragF=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width));tick()};at(e);
+ s.onpointermove=at;s.onpointerup=s.onpointercancel=ev=>{if(ev.type==='pointerup'&&au.duration)au.currentTime=dragF*au.duration;dragF=null;s.classList.remove('drag');s.onpointermove=s.onpointerup=null;tick()}});
+$('#np').addEventListener('keydown',e=>{if(!e.target.closest('#scrub'))return;if(e.key==='ArrowRight')au.currentTime+=5;if(e.key==='ArrowLeft')au.currentTime-=5});
+
+/* ---------- menus & sheets ---------- */
+const layer=$('#layer');
+function closeLayer(){layer.innerHTML=''}
+function menu(anchor,items){const ph=$('#phone').getBoundingClientRect(),r=anchor.getBoundingClientRect();
+ layer.innerHTML=`<div class="scrim" data-act="close" style="background:none"></div><div class="menu" id="menuBox">${items.map((it,i)=>`<button data-act="menuItem" data-i="${i}"${it.dim?' class="dim"':''}${it.on?' class="on"':''}>${esc(it.t)}</button>`).join('')}</div>`;
+ const m=$('#menuBox'),w=m.offsetWidth,h=m.offsetHeight;let x=Math.min(r.right-ph.left-w,ph.width-w-8),y=r.bottom-ph.top;if(y+h>ph.height-16)y=r.top-ph.top-h;m.style.left=Math.max(8,x)+'px';m.style.top=Math.max(8,y)+'px';
+ layer._items=items}
+function sheet(html){layer.innerHTML=`<div class="scrim" data-act="close"></div><div class="sheet">${html}</div>`;requestAnimationFrame(()=>layer.querySelectorAll('.scrim,.sheet').forEach(e=>e.classList.add('show')))}
+
+/* ---------- actions ---------- */
+function connect(tok){tok=(tok||'').trim();if(!tok)return;S.connecting=true;S.tokenErr=null;render();
+ setTimeout(()=>{S.connecting=false;if(tok.length<8){S.tokenErr="That token didn't work. Check that it has Files and Folders read access."}else{S.connected=true;store.set('connected',true);S.path=[DRIME.hash]}render()},700)}
+function openFolder(path){S.path=path;S.loading=true;render();setTimeout(()=>{S.loading=false;render()},320)}
+function toast(t){S.toast=t;render();clearTimeout(toast.t);toast.t=setTimeout(()=>{S.toast=null;render()},2500)}
+function addShelf(h,asBook){const n=NODES[h];S.shelves=[...S.shelves.filter(s=>s.hash!==h),{hash:h,name:n.name,asBook}];store.set('shelves',S.shelves);toast(asBook?`“${n.name}” added to Books`:`Books will look inside “${n.name}”`)}
+const folderTracks=()=>{const here=NODES[S.path.at(-1)];return here.children.filter(c=>!c.folder&&!c.image).sort((a,b)=>nat(a.name,b.name)).map(f=>drimeTrack(f,here))};
+function playBook(b,ch){const p=progress[b.id],resume=p&&!p.f;if(p?.f&&ch==null){progress[b.id]={...p,f:false,c:0,p:0};saveProg()}
+ play(b.chapters,ch??(resume?Math.min(p.c,b.chapters.length-1):0),ch==null&&resume?p.p:0,{bookId:b.id})}
+const A_={
+ tab:d=>{if(S.tab===d.t){S.album=null;S.book=null}S.tab=d.t;store.set('tab',d.t);closeLayer();render();$('#view').scrollTop=0},
+ allow:()=>{S.musicAllowed=true;store.set('musicAllowed',true);render()},
+ mode:d=>{S.mode=d.m;render()},openAlbum:d=>{S.album=d.id;render();$('#view').scrollTop=0},closeAlbum:()=>{S.album=null;render()},
+ playAlbum:()=>play(albums().find(a=>a.id===S.album).songs),shuffleAlbum:()=>play(albums().find(a=>a.id===S.album).songs,0,0,{shuffle:1}),
+ playAlbumAt:d=>play(albums().find(a=>a.id===S.album).songs,+d.i),playSong:d=>play(allSongs(),+d.i),shuffleAll:()=>play(allSongs(),0,0,{shuffle:1}),
+ addFiles:()=>$('#pickFiles').click(),
+ openBook:d=>{S.book=d.id;render();$('#view').scrollTop=0},closeBook:()=>{S.book=null;render()},resume:d=>playBook(findBook(d.id)),
+ bookPlay:()=>{if(P.bookId===S.book)toggle();else playBook(findBook(S.book))},chapter:d=>playBook(findBook(S.book),+d.i),
+ bookMenu:(d,el)=>{const id=S.book,p=progress[id];menu(el,[...(p?[{t:'Start over',f:()=>{delete progress[id];saveProg();render()}}]:[]),...(p?.f?[]:[{t:'Mark as finished',f:()=>{progress[id]={c:0,p:0,d:0,s:p?.s||1,u:Date.now(),f:true};saveProg();render()}}])])},
+ chooseFolder:()=>sheet(`<h3>Choose folder</h3><p class="s" style="padding:0 24px 8px;white-space:normal">On the phone this opens Android's folder picker. In the preview:</p>
+  <div class="row" data-act="sampleFolder"><div class="grow"><div class="t">Use the sample folder</div><div class="s">Two short books with generated audio</div></div></div>
+  <div class="row" data-act="pickFolder"><div class="grow"><div class="t">Pick a folder on this computer</div><div class="s">Each subfolder becomes a book</div></div></div>`),
+ sampleFolder:()=>{S.booksSample=true;store.set('booksSample',true);closeLayer();render()},pickFolder:()=>{closeLayer();$('#pickFolder').click()},
+ clearLocal:()=>{S.booksSample=false;S.userBooks=[];store.set('booksSample',false);render()},
+ removeShelf:d=>{S.shelves=S.shelves.filter(s=>s.hash!==d.h);store.set('shelves',S.shelves);render()},
+ rescan:(d,el)=>{el.textContent='Looking for books…';setTimeout(render,600)},
+ crumb:d=>{if(+d.i<S.path.length-1)openFolder(S.path.slice(0,+d.i+1))},open:d=>openFolder([...S.path,d.h]),
+ playFile:d=>play(folderTracks(),+d.i),playFolder:()=>play(folderTracks()),shuffleFolder:()=>play(folderTracks(),0,0,{shuffle:1}),
+ folderMenu:(d,el)=>menu(el,[{t:'Add to Books as one book',f:()=>addShelf(d.h,true)},{t:'Use as audiobook library',f:()=>addShelf(d.h,false)}]),
+ drimeMenu:(d,el)=>{const h=S.path.at(-1),root=h===DRIME.hash;menu(el,[...(root?[]:[{t:'Add this folder to Books',f:()=>addShelf(h,true)},{t:'Use as audiobook library',f:()=>addShelf(h,false)}]),
+  {t:'Refresh',f:()=>openFolder(S.path)},{t:'Disconnect',f:()=>{S.connected=false;store.set('connected',false);S.path=[DRIME.hash];render()}}])},
+ toggle:(d,el,e)=>{e.stopPropagation();toggle()},next:(d,el,e)=>{e.stopPropagation();next()},prev:()=>prev(),
+ back:()=>au.currentTime=Math.max(0,au.currentTime-10),fwd:(d,el,e)=>{e.stopPropagation();au.currentTime=Math.min(au.duration||0,au.currentTime+30)},
+ openNP:()=>{paint();requestAnimationFrame(()=>$('#np').classList.add('open'))},closeNP:()=>$('#np').classList.remove('open'),
+ shuffleT:()=>{P.shuffle=!P.shuffle;const c=P.order[P.pos];P.order=[...P.queue.keys()];if(P.shuffle){P.order=P.order.filter(i=>i!==c).sort(()=>Math.random()-.5);P.order.unshift(c);P.pos=0}else P.pos=c;paint()},
+ repeatT:()=>{P.repeat={off:'all',all:'one',one:'off'}[P.repeat];paint()},
+ speed:(d,el)=>menu(el,[0.8,1,1.1,1.2,1.3,1.5,1.75,2].map(s=>({t:s+'×',on:s===P.rate,f:()=>setRate(s)}))),
+ sleep:(d,el)=>{const b=!!P.bookId;menu(el,[{t:'1 minute (for testing)',f:()=>sleepStart(1)},...[10,20,30,45,60].map(m=>({t:m+' minutes',f:()=>sleepStart(m)})),{t:b?'End of chapter':'End of track',f:()=>{sleepStop();P.sleep={mode:'chapter',endsAt:0};paint()}},...(P.sleep.mode!=='off'?[{t:'Turn off',dim:1,f:sleepStop}]:[])])},
+ queue:()=>{const b=!!P.bookId;sheet(`<h3>${b?'Chapters':'Up next'}</h3>`+P.order.map((qi,i)=>{const t=P.queue[qi],on=i===P.pos;return`<div class="row" data-act="jump" data-i="${i}" style="padding:12px 24px"><span class="num" style="width:36px${on?';color:var(--accent)':''}">${i+1}</span><span class="t grow"${on?' style="color:var(--accent)"':''}>${esc(t.title)}</span></div>`}).join(''));
+  requestAnimationFrame(()=>{const sh=layer.querySelector('.sheet'),row=sh?.querySelectorAll('.row')[Math.max(0,P.pos-2)];if(row)sh.scrollTop=row.offsetTop-60})},
+ jump:d=>{P.pos=+d.i;closeLayer();loadCurrent(0,true)},
+ close:()=>closeLayer(),menuItem:d=>{const it=layer._items[+d.i];closeLayer();it.f()}};
+let suppress=false;
+document.addEventListener('click',e=>{if(suppress){suppress=false;e.preventDefault();e.stopPropagation();return}const el=e.target.closest('[data-act]');if(!el||!A_[el.dataset.act])return;
+ if(el.closest('.mini')&&el.dataset.act!=='openNP')e.stopPropagation();A_[el.dataset.act](el.dataset,el,e)},true);
+/* long-press / right-click on Drime folders, as on the phone */
+let lp=null;document.addEventListener('pointerdown',e=>{const el=e.target.closest('[data-long]');if(!el||e.target.closest('.ib'))return;lp=setTimeout(()=>{lp='done';A_.folderMenu({h:el.dataset.long},el)},500)});
+document.addEventListener('pointerup',()=>{if(lp==='done'){suppress=true;setTimeout(()=>suppress=false,400)}clearTimeout(lp);lp=null});
+document.addEventListener('pointermove',e=>{if(lp&&lp!=='done'&&(Math.abs(e.movementX)+Math.abs(e.movementY))>6){clearTimeout(lp);lp=null}});
+document.addEventListener('contextmenu',e=>{const el=e.target.closest('[data-long]');if(el){e.preventDefault();A_.folderMenu({h:el.dataset.long},el)}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(layer.innerHTML)closeLayer();else $('#np').classList.remove('open')}
+ if(e.key===' '&&!/INPUT|BUTTON/.test(e.target.tagName)&&cur()){e.preventDefault();toggle()}});
+
+/* ---------- your own files ---------- */
+function probe(t){const a=new Audio();a.preload='metadata';a.src=t.url;a.onloadedmetadata=()=>{t.len=t.secs=a.duration;render()}}
+$('#pickFiles').onchange=e=>{const fs=[...e.target.files].filter(f=>f.type.startsWith('audio')||/\.(mp3|m4a|m4b|aac|flac|ogg|opus|wav)$/i.test(f.name));
+ S.userSongs.push(...fs.map((f,i)=>{const t={id:'u:'+Date.now()+i,title:pretty(f.name),artist:'Your files',album:'From this computer',art:null,url:URL.createObjectURL(f),len:0};probe(t);return t}));S.musicAllowed=true;e.target.value='';render()};
+$('#pickFolder').onchange=e=>{const fs=[...e.target.files],groups={},covers={};
+ for(const f of fs){const parts=(f.webkitRelativePath||f.name).split('/');const isAudio=/\.(mp3|m4a|m4b|aac|flac|ogg|opus|wav)$/i.test(f.name),isImg=/\.(jpe?g|png|webp)$/i.test(f.name);
+  const key=parts.length>=3?parts[1]:'file:'+f.name;if(isImg&&parts.length>=3&&(!covers[key]||/cover|folder|front/i.test(f.name)))covers[key]=URL.createObjectURL(f);
+  if(isAudio)(groups[key]=groups[key]||[]).push([parts.slice(2).join('/')||f.name,f])}
+ S.userBooks=Object.entries(groups).map(([k,files])=>{files.sort((a,b)=>nat(a[0],b[0]));const[title,author]=split(k.startsWith('file:')?pretty(k.slice(5)):k);
+  return{id:'pc:'+k,title,author,source:'local',art:covers[k]||null,chapters:files.map(([,f],i)=>{const t={id:'pc:'+k+':'+i,title:files.length>1?pretty(f.name):title,url:URL.createObjectURL(f),len:0};probe(t);return t})}});
+ e.target.value='';render()};
+
+$('#reset').onclick=()=>{try{Object.keys(localStorage).filter(k=>k.startsWith('tape.')).forEach(k=>localStorage.removeItem(k))}catch{}location.reload()};
+const clk=()=>{const d=new Date();$('#clock').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')};clk();setInterval(clk,15000);
+setInterval(()=>{if(P.sleep.mode==='at')paint()},1000);
+render();paint();
+}
+</script>
+</body>
+</html>

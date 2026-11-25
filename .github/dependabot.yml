@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Compose, Media3 and AndroidX move together; review them as one PR each.
+      androidx:
+        patterns: ["androidx.*"]
+      kotlin:
+        patterns: ["org.jetbrains.kotlin*", "org.jetbrains.kotlinx*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
