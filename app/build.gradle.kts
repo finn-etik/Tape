@@ -17,7 +17,12 @@ val drimeClientId: String =
 
 android {
     namespace = "app.tape"
-    compileSdk = 37
+    // Compose 1.13 needs the 37.1 minor SDK release.
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "app.tape"

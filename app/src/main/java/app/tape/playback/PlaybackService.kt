@@ -68,10 +68,10 @@ class PlaybackService : MediaLibraryService() {
 
         // Artwork for the notification can be a Drime URL, so load it with our authenticated stack.
         val bitmapLoader = CacheBitmapLoader(
-            DataSourceBitmapLoader(
-                MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
-                DefaultDataSource.Factory(this, OkHttpDataSource.Factory(graph.drimeHttp)),
-            ),
+            DataSourceBitmapLoader.Builder(this)
+                .setExecutorService(MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()))
+                .setDataSourceFactory(DefaultDataSource.Factory(this, OkHttpDataSource.Factory(graph.drimeHttp)))
+                .build(),
         )
 
         val openApp = PendingIntent.getActivity(
@@ -253,6 +253,7 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val book = graph.progress.lastBookId?.let { graph.books.find(it) }
                 ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
