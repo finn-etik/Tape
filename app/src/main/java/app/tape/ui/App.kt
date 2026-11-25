@@ -26,6 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
@@ -115,7 +119,8 @@ private fun Header(selected: Tab, onSelect: (Tab) -> Unit) {
             .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
-        Tab.entries.forEach { t ->
+        // Music and Books are the two libraries, so they get the big titles.
+        listOf(Tab.Music, Tab.Books).forEach { t ->
             val color by animateColorAsState(if (t == selected) Ink else Muted.copy(alpha = 0.55f), label = "tab")
             Text(
                 t.label,
@@ -127,11 +132,30 @@ private fun Header(selected: Tab, onSelect: (Tab) -> Unit) {
             Spacer(Modifier.width(20.dp))
         }
         Spacer(Modifier.weight(1f))
+
+        // Drime is where files come from, not a library of its own: a small chip, not a title.
+        val onDrime = selected == Tab.Drime
+        val chipBg by animateColorAsState(if (onDrime) Ink else Color.Transparent, label = "drimeBg")
+        val chipFg by animateColorAsState(if (onDrime) Paper else Muted, label = "drimeFg")
+        Row(
+            Modifier
+                .padding(bottom = 3.dp)
+                .clip(CircleShape)
+                .background(chipBg)
+                .quietClick { onSelect(Tab.Drime) }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.Cloud, contentDescription = null, tint = chipFg, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Drime", style = MaterialTheme.typography.labelLarge, color = chipFg)
+        }
+        Spacer(Modifier.width(8.dp))
         Icon(
             Icons.Outlined.Info,
             contentDescription = "About TAPE",
             tint = Muted.copy(alpha = 0.6f),
-            modifier = Modifier.padding(bottom = 6.dp).size(20.dp).quietClick { about = true },
+            modifier = Modifier.padding(bottom = 9.dp).size(20.dp).quietClick { about = true },
         )
     }
     if (about) AboutSheet(onDismiss = { about = false })
