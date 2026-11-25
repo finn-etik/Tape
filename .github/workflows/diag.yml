@@ -1,0 +1,21 @@
+name: Drime diagnostics
+on:
+  push:
+    branches: [diag/drime]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Drime API (no credentials)
+        run: |
+          for path in users/me "drive/file-entries?perPage=1"; do
+            for ua in "okhttp/4.12.0" "Mozilla/5.0 (Linux; Android 15) TAPE/0.1"; do
+              echo "=================== $path  UA=$ua"
+              curl -sS -i --max-time 20 -A "$ua" -H "Accept: application/json" \
+                -H "Authorization: Bearer 1|notarealtoken" \
+                "https://app.drime.cloud/api/v1/$path" | head -c 1500
+              echo
+            done
+          done
+          echo "=================== redirect check without trailing path"
+          curl -sS -o /dev/null -w "%{http_code} -> %{redirect_url}\n" https://app.drime.cloud/api/v1/users/me
