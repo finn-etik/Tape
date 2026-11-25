@@ -7,6 +7,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import app.tape.drime.DrimeApi
@@ -16,15 +17,20 @@ import app.tape.drime.DrimeLogin
 import app.tape.drime.DrimeSession
 import app.tape.drime.TokenStore
 import app.tape.library.BookLibrary
+import app.tape.library.Bookmarks
 import app.tape.library.DrimeMusic
 import app.tape.library.MusicCatalog
 import app.tape.library.Playlists
 import app.tape.library.LocalMusic
 import app.tape.library.ProgressStore
+import app.tape.playback.Downloads
 import app.tape.playback.PlayerConnection
 import app.tape.playback.SleepTimer
-import coil.ImageLoader
-import coil.ImageLoaderFactory
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +38,7 @@ import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class TapeApp : Application(), ImageLoaderFactory {
+class TapeApp : Application(), SingletonImageLoader.Factory {
     lateinit var graph: AppGraph
         private set
 
@@ -42,8 +48,11 @@ class TapeApp : Application(), ImageLoaderFactory {
     }
 
     /** Coil uses the Drime-aware client, so cover art stored in Drime just loads. */
-    override fun newImageLoader(): ImageLoader =
-        ImageLoader.Builder(this).okHttpClient(graph.drimeHttp).crossfade(true).build()
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .components { add(OkHttpNetworkFetcherFactory(callFactory = { graph.drimeHttp })) }
+            .crossfade(true)
+            .build()
 }
 
 val Context.graph: AppGraph get() = (applicationContext as TapeApp).graph
@@ -68,28 +77,41 @@ class AppGraph(app: Application) {
     val drimeMusic = DrimeMusic(app, drime)
     val music = MusicCatalog(localMusic, drimeMusic, scope)
     val playlists = Playlists(app)
+    val bookmarks = Bookmarks(app)
     val progress = ProgressStore(app)
-    val books = BookLibrary(app, drime)
+    val books = BookLibrary(app, drime, drimeHttp)
     val sleepTimer = SleepTimer()
     val player = PlayerConnection(app, progress)
 
+    private val databaseProvider by lazy { StandaloneDatabaseProvider(app) }
+
     /** Streams from Drime are cached on disk (LRU, 1 GB) so replays and seeks are instant. */
     private val mediaCache: SimpleCache by lazy {
-        SimpleCache(
-            File(app.cacheDir, "media"),
-            LeastRecentlyUsedCacheEvictor(1L shl 30),
-            StandaloneDatabaseProvider(app),
-        )
+        SimpleCache(File(app.cacheDir, "media"), LeastRecentlyUsedCacheEvictor(1L shl 30), databaseProvider)
     }
 
-    /** Local files go through DefaultDataSource directly; http(s) through cache → OkHttp (with auth). */
+    /** "Keep on phone" files: never evicted, and in app storage so Android won't clear them. */
+    private val downloadCache: SimpleCache by lazy {
+        SimpleCache(File(app.filesDir, "downloads"), NoOpCacheEvictor(), databaseProvider)
+    }
+
+    val downloads: Downloads by lazy {
+        Downloads(app, databaseProvider, downloadCache, OkHttpDataSource.Factory(drimeHttp))
+    }
+
+    /**
+     * Local files go through DefaultDataSource directly. http(s) is read from the kept
+     * files first, then the streaming cache, then Drime (with auth).
+     */
     val dataSourceFactory: DataSource.Factory by lazy {
-        DefaultDataSource.Factory(
-            app,
-            CacheDataSource.Factory()
-                .setCache(mediaCache)
-                .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(drimeHttp))
-                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR),
-        )
+        val streaming = CacheDataSource.Factory()
+            .setCache(mediaCache)
+            .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(drimeHttp))
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        val kept = CacheDataSource.Factory()
+            .setCache(downloadCache)
+            .setUpstreamDataSourceFactory(streaming)
+            .setCacheWriteDataSinkFactory(null) // read-only: only downloads write here
+        DefaultDataSource.Factory(app, kept)
     }
 }

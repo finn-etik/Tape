@@ -138,8 +138,8 @@ class LibraryTree(private val graph: AppGraph) {
     fun bookQueue(book: Book): MediaItemsWithStartPosition {
         val p = graph.progress.get(book.id)
         val resume = p != null && !p.finished
-        val index = if (resume) p!!.chapter.coerceIn(0, book.chapters.lastIndex) else 0
-        val position = if (resume) p!!.positionMs else 0L
+        val index = if (resume) p.chapter.coerceIn(0, book.chapters.lastIndex) else 0
+        val position = if (resume) p.positionMs else 0L
         return MediaItemsWithStartPosition(book.mediaItems(), index, position)
     }
 

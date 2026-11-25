@@ -6,10 +6,16 @@ files stored in [Drime](https://drime.cloud).
 - **Music**: albums and songs from the phone (MediaStore) and from Drime folders you add to
   Music (a folder of audio = an album; `Artist/Album` folders are understood), shuffle, repeat.
 - **Playlists**: your own, mixing songs from the phone and Drime. Long-press any song (or use the
-  + in the player) to add it; reorder and remove with a long-press inside the playlist.
+  + in the player) to add it; drag ≡ to reorder.
+- **Queue**: long-press a song for *Play next* or *Add to queue*; in the player's queue, drag ≡ to
+  reorder and long-press to remove.
+- **Search**: one field (🔍 in the header) for books, playlists, albums and songs; accents and
+  case don't matter.
+- **Keep on phone**: download a Drime book, album or playlist so it plays without a connection.
 - **Books**: pick a folder and every subfolder becomes a book (or a single `.m4b`/`.mp3` file).
   TAPE remembers your place per book, keeps its own speed per book (0.8×–2×), and steps
-  back 10 s when you return after a break.
+  back 10 s when you return after a break. Chapters inside `.m4b` files (Nero and QuickTime
+  chapter marks) become real chapters. Bookmarks with notes from the player.
 - **Drime**: browse your Drime folders and stream anything playable. Add a folder to Music, or to
   Books as one book or as a library whose subfolders are books.
 - **Android Auto**: Books (resume with one tap), Playlists, Albums and Songs, plus search and
@@ -121,8 +127,6 @@ preview/index.html      Web preview of the UI
 
 ## Not yet
 
-- Chapters *inside* a single `.m4b` (one file plays as one long chapter for now).
-- Keeping a Drime book fully offline on purpose (today it's cached as you listen).
 - Cover art in Android Auto's browse lists (the now-playing screen in the car does show it).
 
 ## License

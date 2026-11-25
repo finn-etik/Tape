@@ -20,11 +20,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-data class Chapter(val title: String, val uri: Uri, val mediaId: String)
+/**
+ * One chapter. Usually a whole file; for chapters inside one file (an .m4b) it's a span of
+ * that file: [startMs] until [endMs] (-1 = to the end).
+ */
+data class Chapter(
+    val title: String,
+    val uri: Uri,
+    val mediaId: String,
+    val startMs: Long = 0L,
+    val endMs: Long = -1L,
+)
 
 data class Book(
     val id: String,
@@ -37,6 +48,12 @@ data class Book(
 ) {
     val isCloud: Boolean get() = source.startsWith("drime:")
 
+    /** Drime files behind this book as (file id, url, title); chapters of one .m4b share a file. */
+    fun cloudFiles(): List<Triple<String, String, String>> = chapters
+        .filter { it.mediaId.startsWith("drime:") }
+        .map { Triple(Media.fileId(it.mediaId), it.uri.toString(), title) }
+        .distinctBy { it.first }
+
     fun mediaItems(): List<MediaItem> = chapters.mapIndexed { i, ch ->
         Media.item(
             mediaId = ch.mediaId,
@@ -47,6 +64,8 @@ data class Book(
             artwork = cover,
             bookId = id,
             track = i + 1,
+            clipStartMs = ch.startMs,
+            clipEndMs = if (ch.endMs >= 0) ch.endMs else androidx.media3.common.C.TIME_END_OF_SOURCE,
         )
     }
 }
@@ -67,6 +86,7 @@ data class DrimeShelf(val hash: String, val name: String, val asBook: Boolean) {
 class BookLibrary(
     private val context: Context,
     private val drime: DrimeApi,
+    private val http: OkHttpClient, // Drime-authenticated; used for reading chapter marks
 ) {
     private val prefs = context.getSharedPreferences("books", Context.MODE_PRIVATE)
     private val cacheFile = File(context.filesDir, "books.json")
@@ -141,7 +161,10 @@ class BookLibrary(
 
             val books = found.distinctBy { it.id }.sortedWith(compareBy(NaturalOrder) { it.title })
             _books.value = books
-            withContext(Dispatchers.IO) { writeCache(books) }
+            withContext(Dispatchers.IO) {
+                writeCache(books)
+                writeChapterMarks()
+            }
         } finally {
             _scanning.value = false
         }
@@ -176,8 +199,8 @@ class BookLibrary(
                 author = author,
                 source = "local",
                 cover = pickCover(inside.filter { it.isImage }, { it.name })?.let { docUri(tree, it.id) },
-                chapters = files.map { (_, doc) ->
-                    Chapter(prettyName(doc.name), docUri(tree, doc.id), "local:${doc.id}")
+                chapters = files.flatMap { (_, doc) ->
+                    chaptersFor(doc.name, docUri(tree, doc.id), "local:${doc.id}", prettyName(doc.name), remote = false)
                 },
             )
         }
@@ -189,7 +212,7 @@ class BookLibrary(
                 author = author,
                 source = "local",
                 cover = null,
-                chapters = listOf(Chapter(title, docUri(tree, file.id), "local:${file.id}")),
+                chapters = chaptersFor(file.name, docUri(tree, file.id), "local:${file.id}", title, remote = false),
             )
         }
         return books
@@ -230,7 +253,9 @@ class BookLibrary(
                 author = author,
                 source = shelf.key,
                 cover = null,
-                chapters = listOf(Chapter(title, drime.downloadUrl(file.hash).toUri(), "drime:${file.hash}")),
+                chapters = withContext(Dispatchers.IO) {
+                    chaptersFor(file.name, drime.downloadUrl(file.hash).toUri(), "drime:${file.hash}", title, remote = true)
+                },
             )
         }
         return folderBooks + singles
@@ -252,8 +277,10 @@ class BookLibrary(
             author = author,
             source = source,
             cover = pickCover(entries.filter { it.isImage }, { it.name })?.let { drime.downloadUrl(it.hash).toUri() },
-            chapters = files.map { (_, e) ->
-                Chapter(prettyName(e.name), drime.downloadUrl(e.hash).toUri(), "drime:${e.hash}")
+            chapters = withContext(Dispatchers.IO) {
+                files.flatMap { (_, e) ->
+                    chaptersFor(e.name, drime.downloadUrl(e.hash).toUri(), "drime:${e.hash}", prettyName(e.name), remote = true)
+                }
             },
         )
     }
@@ -287,7 +314,12 @@ class BookLibrary(
                     .put("cover", b.cover?.toString() ?: "")
                     .put(
                         "chapters",
-                        JSONArray(b.chapters.map { JSONObject().put("t", it.title).put("u", it.uri.toString()).put("m", it.mediaId) }),
+                        JSONArray(
+                            b.chapters.map {
+                                JSONObject().put("t", it.title).put("u", it.uri.toString()).put("m", it.mediaId)
+                                    .put("s", it.startMs).put("e", it.endMs)
+                            },
+                        ),
                     )
             },
         )
@@ -312,13 +344,66 @@ class BookLibrary(
                 cover = o.optString("cover").ifEmpty { null }?.toUri(),
                 chapters = (0 until ch.length()).map { j ->
                     val c = ch.getJSONObject(j)
-                    Chapter(c.getString("t"), c.getString("u").toUri(), c.getString("m"))
+                    Chapter(c.getString("t"), c.getString("u").toUri(), c.getString("m"), c.optLong("s"), c.optLong("e", -1L))
                 },
             )
         }
     }
 
+    // ---- Chapters inside .m4b / .m4a files ------------------------------------------------
+
+    private val marksFile = File(context.filesDir, "chapter_marks.json")
+    private val marks: MutableMap<String, List<FileChapter>> = readChapterMarks()
+
+    /**
+     * One file → its chapters. A plain audio file is one chapter; an MP4-family file with
+     * chapter marks becomes one clipped [Chapter] per mark. Marks are read once per file
+     * (only the file's index, not the audio) and remembered.
+     */
+    private fun chaptersFor(name: String, uri: Uri, mediaId: String, title: String, remote: Boolean): List<Chapter> {
+        val plain = listOf(Chapter(title, uri, mediaId))
+        if (DrimeEntry.extensionOf(name, null) !in MP4_FAMILY) return plain
+        val key = uri.toString()
+        val found = synchronized(marks) { marks[key] } ?: run {
+            val read = try {
+                val src: ByteSource = if (remote) HttpByteSource(http, key) else LocalByteSource(context, uri)
+                src.use { Mp4Chapters.read(it) } ?: emptyList()
+            } catch (e: Exception) {
+                return plain // offline or unreadable: try again next scan
+            }
+            synchronized(marks) { marks[key] = read }
+            read
+        }
+        if (found.size < 2) return plain
+        return found.mapIndexed { i, m ->
+            Chapter(
+                title = m.title.ifBlank { "Chapter ${i + 1}" },
+                uri = uri,
+                mediaId = "$mediaId#$i",
+                startMs = m.startMs,
+                endMs = found.getOrNull(i + 1)?.startMs ?: -1L,
+            )
+        }
+    }
+
+    private fun readChapterMarks(): MutableMap<String, List<FileChapter>> = runCatching {
+        val o = JSONObject(marksFile.readText())
+        o.keys().asSequence().associateWith { k ->
+            val arr = o.getJSONArray(k)
+            (0 until arr.length()).map { arr.getJSONObject(it).let { c -> FileChapter(c.getString("t"), c.getLong("s")) } }
+        }.toMutableMap()
+    }.getOrDefault(mutableMapOf())
+
+    private fun writeChapterMarks() {
+        val o = JSONObject()
+        synchronized(marks) {
+            marks.forEach { (k, list) -> o.put(k, JSONArray(list.map { JSONObject().put("t", it.title).put("s", it.startMs) })) }
+        }
+        runCatching { marksFile.writeText(o.toString()) }
+    }
+
     private companion object {
+        val MP4_FAMILY = setOf("m4b", "m4a", "mp4")
         const val KEY_LOCAL = "local_root"
         const val KEY_SHELVES = "drime_shelves"
         val COVER_NAMES = setOf("cover", "folder", "front", "album", "artwork")

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.tape.graph
+import app.tape.playback.Kept
 import kotlinx.coroutines.launch
 
 @Composable
@@ -102,7 +104,7 @@ fun MusicScreen(onOpenAlbum: (String) -> Unit, onOpenPlaylist: (String) -> Unit)
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                     itemsIndexed(songs, key = { _, t -> t.mediaId }) { i, t ->
-                        TrackRow(t, showArt = true, actions = listOf(addToPlaylistAction(t))) { graph.player.playTracks(songs, i) }
+                        TrackRow(t, showArt = true) { graph.player.playTracks(songs, i) }
                     }
                 }
             }
@@ -118,6 +120,7 @@ private fun AlbumGrid(granted: Boolean, onAllow: () -> Unit, onOpenAlbum: (Strin
     val shelves by graph.drimeMusic.shelves.collectAsStateWithLifecycle()
     val scanning by graph.drimeMusic.scanning.collectAsStateWithLifecycle()
     val connected by graph.tokens.tokens.collectAsStateWithLifecycle()
+    val downloads by graph.downloads.state.collectAsStateWithLifecycle()
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(150.dp),
@@ -139,8 +142,11 @@ private fun AlbumGrid(granted: Boolean, onAllow: () -> Unit, onOpenAlbum: (Strin
                 Box {
                     Artwork(album.art, album.title, Modifier.fillMaxWidth().aspectRatio(1f), corner = 10.dp)
                     if (album.isCloud) {
+                        val onPhone = remember(album, downloads) { graph.downloads.status(album.tracks) } == Kept.All
                         Icon(
-                            Icons.Rounded.Cloud, "In Drime", tint = Paper.copy(alpha = 0.9f),
+                            if (onPhone) Icons.Rounded.DownloadDone else Icons.Rounded.Cloud,
+                            if (onPhone) "On this phone" else "In Drime",
+                            tint = Paper.copy(alpha = 0.9f),
                             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(14.dp),
                         )
                     }
@@ -230,6 +236,8 @@ fun AlbumScreen(albumKey: String, onBack: () -> Unit) {
     }
     var menu by remember { mutableStateOf(false) }
     val total = album.durationMs
+    val keepOnPhone = rememberKeepOnPhone()
+    val kept = keptStatus(album.tracks)
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -241,6 +249,20 @@ fun AlbumScreen(albumKey: String, onBack: () -> Unit) {
                             text = { Text("Add album to playlist…") },
                             onClick = { menu = false; PlaylistPicker.open(album.tracks) },
                         )
+                        if (album.isCloud) {
+                            if (kept != Kept.All && kept !is Kept.Saving) {
+                                DropdownMenuItem(
+                                    text = { Text("Keep on phone") },
+                                    onClick = { menu = false; keepOnPhone { graph.downloads.keepTracks(album.tracks) } },
+                                )
+                            }
+                            if (kept != Kept.None) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove from phone") },
+                                    onClick = { menu = false; graph.downloads.removeTracks(album.tracks) },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -259,6 +281,7 @@ fun AlbumScreen(albumKey: String, onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = Muted,
                     )
+                    KeptLine(kept, Modifier.padding(top = 4.dp))
                 }
             }
         }
@@ -270,7 +293,7 @@ fun AlbumScreen(albumKey: String, onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
         }
         itemsIndexed(album.tracks, key = { _, t -> t.mediaId }) { i, t ->
-            TrackRow(t, showArt = false, number = i + 1, actions = listOf(addToPlaylistAction(t))) {
+            TrackRow(t, showArt = false, number = i + 1) {
                 graph.player.playTracks(album.tracks, i)
             }
         }

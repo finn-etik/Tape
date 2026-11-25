@@ -140,6 +140,28 @@ class PlayerConnection(private val context: Context, private val progress: Progr
     fun playTracks(tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false) =
         play(tracks.map { it.toMediaItem() }, startIndex, 0L, shuffle)
 
+    /** Music can be queued behind music; with nothing playing (or a book) it just starts. */
+    val canQueue: Boolean get() = _state.value.hasMedia && !_state.value.isBook
+
+    fun playNext(tracks: List<Track>) {
+        val c = controller
+        if (c == null || !canQueue) return playTracks(tracks)
+        c.addMediaItems(c.currentMediaItemIndex + 1, tracks.map { it.toMediaItem() })
+    }
+
+    fun addToQueue(tracks: List<Track>) {
+        val c = controller
+        if (c == null || !canQueue) return playTracks(tracks)
+        c.addMediaItems(tracks.map { it.toMediaItem() })
+    }
+
+    fun moveInQueue(from: Int, to: Int) = controller?.moveMediaItem(from, to)
+    fun removeFromQueue(index: Int) = controller?.removeMediaItem(index)
+
+    /** Starts a book at an exact spot (bookmarks). */
+    fun playBookAt(book: Book, chapter: Int, positionMs: Long) =
+        play(book.mediaItems(), chapter.coerceIn(0, book.chapters.lastIndex), positionMs)
+
     /** The song playing now, as a [Track] that can go into a playlist. Null for audiobooks. */
     fun currentTrack(): Track? {
         val c = controller ?: return null
@@ -162,8 +184,8 @@ class PlayerConnection(private val context: Context, private val progress: Progr
     fun playBook(book: Book, chapter: Int? = null) {
         val p = progress.get(book.id)
         val resume = p != null && !p.finished
-        val index = chapter ?: if (resume) p!!.chapter.coerceIn(0, book.chapters.lastIndex) else 0
-        val position = if (chapter == null && resume) p!!.positionMs else 0L
+        val index = chapter ?: if (resume) p.chapter.coerceIn(0, book.chapters.lastIndex) else 0
+        val position = if (chapter == null && resume) p.positionMs else 0L
         play(book.mediaItems(), index, position)
     }
 

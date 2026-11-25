@@ -5,6 +5,12 @@ import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.DownloadDone
+import app.tape.library.Bookmark
+import app.tape.playback.Kept
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -203,8 +209,15 @@ private fun BookRow(book: Book, progressVersion: Long, onClick: () -> Unit) {
             }
         }
         if (book.isCloud) {
+            val downloads by graph.downloads.state.collectAsStateWithLifecycle()
+            val kept = remember(book, downloads) { graph.downloads.status(book.cloudFiles().map { it.first }) } == Kept.All
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Rounded.Cloud, "In Drime", tint = Muted.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+            Icon(
+                if (kept) Icons.Rounded.DownloadDone else Icons.Rounded.Cloud,
+                if (kept) "On this phone" else "In Drime",
+                tint = if (kept) Accent else Muted.copy(alpha = 0.6f),
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }
@@ -241,6 +254,13 @@ fun BookScreen(bookId: String, onBack: () -> Unit) {
     val currentChapter = if (p != null && !p.finished) p.chapter else -1
     val playingHere = nowPlaying.bookId == book.id
     var menu by remember { mutableStateOf(false) }
+    val keepOnPhone = rememberKeepOnPhone()
+    val downloads by graph.downloads.state.collectAsStateWithLifecycle()
+    val files = remember(book) { book.cloudFiles() }
+    val kept = remember(files, downloads) { graph.downloads.status(files.map { it.first }) }
+    val bookmarkVersion by graph.bookmarks.version.collectAsStateWithLifecycle()
+    val marks = remember(book.id, bookmarkVersion) { graph.bookmarks.list(book.id) }
+    var editing by remember { mutableStateOf<Bookmark?>(null) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
@@ -254,6 +274,20 @@ fun BookScreen(bookId: String, onBack: () -> Unit) {
                         if (p?.finished != true) {
                             DropdownMenuItem(text = { Text("Mark as finished") }, onClick = { menu = false; graph.progress.markFinished(book.id) })
                         }
+                        if (files.isNotEmpty()) {
+                            if (kept != Kept.All && kept !is Kept.Saving) {
+                                DropdownMenuItem(
+                                    text = { Text("Keep on phone") },
+                                    onClick = { menu = false; keepOnPhone { graph.downloads.keep(files) } },
+                                )
+                            }
+                            if (kept != Kept.None) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove from phone") },
+                                    onClick = { menu = false; graph.downloads.remove(files.map { it.first }) },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -264,6 +298,7 @@ fun BookScreen(bookId: String, onBack: () -> Unit) {
                 Spacer(Modifier.height(20.dp))
                 Text(book.title, style = MaterialTheme.typography.headlineSmall, color = Ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 book.author?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted) }
+                KeptLine(kept, Modifier.padding(top = 6.dp))
                 Spacer(Modifier.height(20.dp))
                 if (p != null && !p.finished) {
                     Hairline(p.fraction(book.chapters.size), Modifier.fillMaxWidth(0.6f))
@@ -278,6 +313,18 @@ fun BookScreen(bookId: String, onBack: () -> Unit) {
                 PillButton(label, icon = if (label == "Pause") Icons.Rounded.Pause else Icons.Rounded.PlayArrow) {
                     if (playingHere) graph.player.togglePlay() else graph.player.playBook(book)
                 }
+            }
+        }
+        if (marks.isNotEmpty()) {
+            item { SectionLabel("Bookmarks", Modifier.padding(top = 16.dp)) }
+            items(marks, key = { "bm:" + it.id }) { m ->
+                BookmarkRow(
+                    bookmark = m,
+                    chapterTitle = book.chapters.getOrNull(m.chapter)?.title.takeIf { book.chapters.size > 1 },
+                    onPlay = { graph.player.playBookAt(book, m.chapter, m.positionMs) },
+                    onEdit = { editing = m },
+                    onDelete = { graph.bookmarks.delete(book.id, m.id) },
+                )
             }
         }
         if (book.chapters.size > 1) {
@@ -308,6 +355,51 @@ fun BookScreen(bookId: String, onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+
+    editing?.let { m ->
+        NoteDialog(
+            title = "Bookmark",
+            subtitle = (if (book.chapters.size > 1) "Chapter ${m.chapter + 1} · " else "") + formatTime(m.positionMs),
+            confirm = "Save",
+            initial = m.note,
+            onDismiss = { editing = null },
+        ) { note ->
+            graph.bookmarks.updateNote(book.id, m.id, note)
+            editing = null
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookmarkRow(bookmark: Bookmark, chapterTitle: String?, onPlay: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().combinedClickable(onClick = onPlay, onLongClick = { menu = true })
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.Bookmark, null, tint = Accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    listOfNotNull(chapterTitle, formatTime(bookmark.positionMs)).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (bookmark.note.isNotEmpty()) {
+                    Text(bookmark.note, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text(if (bookmark.note.isEmpty()) "Add note" else "Edit note") }, onClick = { menu = false; onEdit() })
+            DropdownMenuItem(text = { Text("Delete bookmark") }, onClick = { menu = false; onDelete() })
         }
     }
 }

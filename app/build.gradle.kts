@@ -1,8 +1,8 @@
 import java.util.Properties
 
+// AGP 9 compiles Kotlin itself ("built-in Kotlin"), so there is no kotlin-android plugin here.
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -17,14 +17,19 @@ val drimeClientId: String =
 
 android {
     namespace = "app.tape"
-    compileSdk = 35
+    // Compose 1.13 needs the 37.1 minor SDK release.
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "app.tape"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        targetSdk = 36
+        versionCode = 2
+        versionName = "0.2.0"
         buildConfigField("String", "DRIME_CLIENT_ID", "\"$drimeClientId\"")
     }
 
@@ -51,9 +56,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -69,7 +71,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.browser)
-    implementation(libs.androidx.security.crypto)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -86,6 +87,15 @@ dependencies {
 
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.guava)
+
+    testImplementation(libs.junit)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
