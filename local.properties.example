@@ -1,0 +1,3 @@
+# Copy to local.properties (Android Studio also writes sdk.dir here).
+# Client id of your app from https://app.drime.cloud/developers
+drime.clientId=
