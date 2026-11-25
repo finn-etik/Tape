@@ -1,0 +1,25 @@
+name: Latest versions
+on:
+  push:
+    branches: [diag/versions]
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          g() { curl -s "https://dl.google.com/android/maven2/$1/maven-metadata.xml" | grep -oP '(?<=<version>)[^<]+' | grep -vE 'alpha|beta|rc|dev' | tail -1 | sed "s|^|$1 |"; }
+          m() { curl -s "https://repo.maven.apache.org/maven2/$1/maven-metadata.xml" | grep -oP '(?<=<version>)[^<]+' | grep -vE 'alpha|beta|RC|rc|dev|M[0-9]' | tail -1 | sed "s|^|$1 |"; }
+          g androidx/media3/media3-exoplayer
+          g androidx/core/core-ktx
+          g androidx/activity/activity-compose
+          g androidx/lifecycle/lifecycle-runtime-compose
+          g androidx/compose/compose-bom
+          g androidx/browser/browser
+          g com/android/application/com.android.application.gradle.plugin
+          m org/jetbrains/kotlin/kotlin-gradle-plugin
+          m org/jetbrains/kotlinx/kotlinx-coroutines-core
+          m com/squareup/okhttp3/okhttp
+          m io/coil-kt/coil-compose
+          m io/coil-kt/coil3/coil-compose
+          m io/coil-kt/coil3/coil-network-okhttp
+          curl -s https://services.gradle.org/versions/current | grep -oP '"version"\s*:\s*"\K[^"]+'
