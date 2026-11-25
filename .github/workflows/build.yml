@@ -45,13 +45,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -x
           gh release delete latest-build --yes --cleanup-tag || true
           git tag -f latest-build "$GITHUB_SHA"
           git push -f origin latest-build
-          gh api "repos/$GITHUB_REPOSITORY/releases" -X POST \
-            -f tag_name=latest-build \
-            -f name="Latest build" \
-            -f body="Debug build of ${GITHUB_SHA::7}. Install on Android by opening tape-debug.apk." \
-            -F prerelease=true -i | head -30
+          notes="Debug build of ${GITHUB_SHA::7}. Install on Android by opening tape-debug.apk."
+          # GitHub sometimes answers 5xx here even though the release was created,
+          # so check for it rather than trusting the status code.
+          for attempt in 1 2 3; do
+            gh release view latest-build >/dev/null 2>&1 && break
+            gh release create latest-build --verify-tag --prerelease --title "Latest build" --notes "$notes" || true
+            sleep $((attempt * 5))
+          done
           gh release upload latest-build tape-debug.apk --clobber
