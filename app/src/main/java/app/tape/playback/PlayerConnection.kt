@@ -9,6 +9,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import app.tape.library.Book
 import app.tape.library.ProgressStore
+import app.tape.library.Track
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -134,6 +135,28 @@ class PlayerConnection(private val context: Context, private val progress: Progr
             c.prepare()
             c.play()
         }
+    }
+
+    fun playTracks(tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false) =
+        play(tracks.map { it.toMediaItem() }, startIndex, 0L, shuffle)
+
+    /** The song playing now, as a [Track] that can go into a playlist. Null for audiobooks. */
+    fun currentTrack(): Track? {
+        val c = controller ?: return null
+        val item = c.currentMediaItem ?: return null
+        if (Media.bookId(item) != null) return null
+        val uri = item.requestMetadata.mediaUri ?: item.localConfiguration?.uri ?: return null
+        val own = item.mediaMetadata
+        val live = c.mediaMetadata // includes tags read from the file
+        return Track(
+            mediaId = item.mediaId,
+            uri = uri,
+            title = own.title?.toString(),
+            displayTitle = (live.title ?: own.displayTitle ?: live.displayTitle)?.toString() ?: item.mediaId,
+            artist = (own.artist ?: live.artist)?.toString(),
+            album = (own.albumTitle ?: live.albumTitle)?.toString(),
+            artwork = own.artworkUri,
+        )
     }
 
     fun playBook(book: Book, chapter: Int? = null) {

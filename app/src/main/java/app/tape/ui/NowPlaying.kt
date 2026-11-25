@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Forward30
@@ -111,6 +112,11 @@ fun NowPlayingScreen(onClose: () -> Unit) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f),
             )
+            if (!np.isBook) {
+                IconButton(onClick = { pc.currentTrack()?.let { PlaylistPicker.open(listOf(it)) } }) {
+                    Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to playlist", tint = Ink)
+                }
+            }
             IconButton(onClick = { showQueue = true }) {
                 Icon(Icons.AutoMirrored.Rounded.QueueMusic, if (np.isBook) "Chapters" else "Queue", tint = Ink)
             }

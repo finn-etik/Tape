@@ -3,12 +3,17 @@
 A quiet music and audiobook player for Android. It plays files on the phone and
 files stored in [Drime](https://drime.cloud).
 
-- **Music**: albums and songs from the phone (MediaStore), shuffle, repeat.
+- **Music**: albums and songs from the phone (MediaStore) and from Drime folders you add to
+  Music (a folder of audio = an album; `Artist/Album` folders are understood), shuffle, repeat.
+- **Playlists**: your own, mixing songs from the phone and Drime. Long-press any song (or use the
+  + in the player) to add it; reorder and remove with a long-press inside the playlist.
 - **Books**: pick a folder and every subfolder becomes a book (or a single `.m4b`/`.mp3` file).
   TAPE remembers your place per book, keeps its own speed per book (0.8×–2×), and steps
   back 10 s when you return after a break.
-- **Drime**: browse your Drime folders and stream anything playable. Add a Drime folder to
-  Books as one book, or as a library folder whose subfolders are books.
+- **Drime**: browse your Drime folders and stream anything playable. Add a folder to Music, or to
+  Books as one book or as a library whose subfolders are books.
+- **Android Auto**: Books (resume with one tap), Playlists, Albums and Songs, plus search and
+  voice ("play The Lantern Path on TAPE").
 - Sleep timer that fades out (minutes or end of chapter), lock-screen, notification and
   headset controls, headset "play" resumes your last audiobook even after the app was closed,
   light and dark themes.
@@ -118,7 +123,7 @@ preview/index.html      Web preview of the UI
 
 - Chapters *inside* a single `.m4b` (one file plays as one long chapter for now).
 - Keeping a Drime book fully offline on purpose (today it's cached as you listen).
-- Android Auto browsing (needs a `MediaLibraryService`).
+- Cover art in Android Auto's browse lists (the now-playing screen in the car does show it).
 
 ## License
 

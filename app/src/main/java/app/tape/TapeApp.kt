@@ -16,6 +16,9 @@ import app.tape.drime.DrimeLogin
 import app.tape.drime.DrimeSession
 import app.tape.drime.TokenStore
 import app.tape.library.BookLibrary
+import app.tape.library.DrimeMusic
+import app.tape.library.MusicCatalog
+import app.tape.library.Playlists
 import app.tape.library.LocalMusic
 import app.tape.library.ProgressStore
 import app.tape.playback.PlayerConnection
@@ -61,7 +64,10 @@ class AppGraph(app: Application) {
     val drimeLogin = DrimeLogin(tokens, drime, plainHttp)
     val drimeBrowser = DrimeBrowser(drime, scope)
 
-    val music = LocalMusic(app)
+    val localMusic = LocalMusic(app)
+    val drimeMusic = DrimeMusic(app, drime)
+    val music = MusicCatalog(localMusic, drimeMusic, scope)
+    val playlists = Playlists(app)
     val progress = ProgressStore(app)
     val books = BookLibrary(app, drime)
     val sleepTimer = SleepTimer()

@@ -1,63 +1,54 @@
 package app.tape.library
 
+import android.Manifest
 import android.content.ContentUris
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import androidx.media3.common.MediaItem
-import app.tape.playback.Media
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
-data class Song(
-    val id: Long,
-    val title: String,
-    val artist: String,
-    val album: String,
-    val albumId: Long,
-    val durationMs: Long,
-    val track: Int,
-) {
-    val uri: Uri get() = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-    val artUri: Uri get() = albumArt(albumId)
-
-    fun toMediaItem(): MediaItem = Media.item(
-        mediaId = "local:$id",
-        uri = uri,
-        title = title,
-        artist = artist,
-        album = album,
-        artwork = artUri,
-    )
-}
-
-data class Album(
-    val id: Long,
-    val title: String,
-    val artist: String,
-    val songs: List<Song>,
-) {
-    val artUri: Uri get() = albumArt(id)
-    val durationMs: Long get() = songs.sumOf { it.durationMs }
-}
-
 private val ALBUM_ART: Uri = Uri.parse("content://media/external/audio/albumart")
-private fun albumArt(albumId: Long): Uri = ContentUris.withAppendedId(ALBUM_ART, albumId)
 
 /** Music on the device, read from MediaStore. */
 class LocalMusic(private val context: Context) {
 
-    private val _songs = MutableStateFlow<List<Song>>(emptyList())
-    val songs: StateFlow<List<Song>> = _songs.asStateFlow()
+    private class Row(
+        val id: Long, val title: String, val artist: String, val album: String,
+        val albumId: Long, val durationMs: Long, val trackNo: Int,
+    ) {
+        fun toTrack() = Track(
+            mediaId = "local:$id",
+            uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id),
+            title = title,
+            displayTitle = title,
+            artist = artist,
+            album = album,
+            artwork = ContentUris.withAppendedId(ALBUM_ART, albumId),
+            durationMs = durationMs,
+        )
+    }
 
-    private val _albums = MutableStateFlow<List<Album>>(emptyList())
-    val albums: StateFlow<List<Album>> = _albums.asStateFlow()
+    private val _songs = MutableStateFlow<List<Track>>(emptyList())
+    val songs: StateFlow<List<Track>> = _songs.asStateFlow()
+
+    private val _albums = MutableStateFlow<List<AlbumEntry>>(emptyList())
+    val albums: StateFlow<List<AlbumEntry>> = _albums.asStateFlow()
+
+    val permission: String =
+        if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+
+    val hasPermission: Boolean
+        get() = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
+        if (!hasPermission) return@withContext
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
@@ -74,36 +65,35 @@ class LocalMusic(private val context: Context) {
                 append(" AND ${MediaStore.Audio.Media.IS_AUDIOBOOK} = 0")
             }
         }
-        val list = mutableListOf<Song>()
-        context.contentResolver.query(
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, selection, null, null,
-        )?.use { c ->
-            while (c.moveToNext()) {
-                list += Song(
-                    id = c.getLong(0),
-                    title = c.getString(1)?.takeIf { it.isNotBlank() } ?: "Untitled",
-                    artist = c.getString(2)?.takeUnless { it.isBlank() || it == "<unknown>" } ?: "Unknown artist",
-                    album = c.getString(3)?.takeIf { it.isNotBlank() } ?: "Unknown album",
-                    albumId = c.getLong(4),
-                    durationMs = c.getLong(5),
-                    track = c.getInt(6) % 1000, // MediaStore packs disc * 1000 + track
-                )
+        val rows = mutableListOf<Row>()
+        runCatching {
+            context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, selection, null, null,
+            )?.use { c ->
+                while (c.moveToNext()) {
+                    rows += Row(
+                        id = c.getLong(0),
+                        title = c.getString(1)?.takeIf { it.isNotBlank() } ?: "Untitled",
+                        artist = c.getString(2)?.takeUnless { it.isBlank() || it == "<unknown>" } ?: "Unknown artist",
+                        album = c.getString(3)?.takeIf { it.isNotBlank() } ?: "Unknown album",
+                        albumId = c.getLong(4),
+                        durationMs = c.getLong(5),
+                        trackNo = c.getInt(6) % 1000, // MediaStore packs disc * 1000 + track
+                    )
+                }
             }
         }
-        val songs = list.sortedWith(compareBy(NaturalOrder) { it.title })
-        val albums = list.groupBy { it.albumId }.map { (id, tracks) ->
-            val ordered = tracks.sortedWith(compareBy<Song> { it.track }.thenBy(NaturalOrder) { it.title })
-            Album(
-                id = id,
+
+        _songs.value = rows.map { it.toTrack() }.sortedWith(compareBy(NaturalOrder) { it.name })
+        _albums.value = rows.groupBy { it.albumId }.map { (id, group) ->
+            val ordered = group.sortedWith(compareBy<Row> { it.trackNo }.thenBy(NaturalOrder) { it.title })
+            AlbumEntry(
+                key = "local:$id",
                 title = ordered.first().album,
                 artist = ordered.map { it.artist }.distinct().singleOrNull() ?: "Various artists",
-                songs = ordered,
+                art = ContentUris.withAppendedId(ALBUM_ART, id),
+                tracks = ordered.map { it.toTrack() },
             )
         }.sortedWith(compareBy(NaturalOrder) { it.title })
-
-        _songs.value = songs
-        _albums.value = albums
     }
-
-    fun album(id: Long): Album? = _albums.value.firstOrNull { it.id == id }
 }

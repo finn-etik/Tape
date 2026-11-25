@@ -48,13 +48,14 @@ fun TapeRoot() {
 
     var tab by rememberSaveable { mutableStateOf(Tab.Music) }
     var playerOpen by rememberSaveable { mutableStateOf(false) }
-    var openAlbum by rememberSaveable { mutableStateOf<Long?>(null) }
+    var openAlbum by rememberSaveable { mutableStateOf<String?>(null) }
+    var openPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
     var openBook by rememberSaveable { mutableStateOf<String?>(null) }
 
     Box(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.fillMaxSize()) {
             Header(selected = tab, onSelect = {
-                if (it == tab) { openAlbum = null; openBook = null } // tapping the current tab goes home
+                if (it == tab) { openAlbum = null; openPlaylist = null; openBook = null } // tapping the current tab goes home
                 tab = it
             })
 
@@ -62,8 +63,12 @@ fun TapeRoot() {
                 when (tab) {
                     Tab.Music -> {
                         val album = openAlbum
-                        if (album == null) MusicScreen(onOpenAlbum = { openAlbum = it })
-                        else AlbumScreen(album, onBack = { openAlbum = null })
+                        val playlist = openPlaylist
+                        when {
+                            album != null -> AlbumScreen(album, onBack = { openAlbum = null })
+                            playlist != null -> PlaylistScreen(playlist, onBack = { openPlaylist = null })
+                            else -> MusicScreen(onOpenAlbum = { openAlbum = it }, onOpenPlaylist = { openPlaylist = it })
+                        }
                     }
                     Tab.Books -> {
                         val book = openBook
@@ -89,7 +94,12 @@ fun TapeRoot() {
         }
     }
 
+    PlaylistPicker.pending?.let { tracks ->
+        AddToPlaylistSheet(tracks, onDismiss = { PlaylistPicker.pending = null })
+    }
+
     BackHandler(enabled = openAlbum != null && tab == Tab.Music && !playerOpen) { openAlbum = null }
+    BackHandler(enabled = openPlaylist != null && openAlbum == null && tab == Tab.Music && !playerOpen) { openPlaylist = null }
     BackHandler(enabled = openBook != null && tab == Tab.Books && !playerOpen) { openBook = null }
     BackHandler(enabled = playerOpen) { playerOpen = false }
 }

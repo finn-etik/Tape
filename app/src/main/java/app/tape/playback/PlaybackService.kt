@@ -13,29 +13,37 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
+import android.os.Bundle
 import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import app.tape.MainActivity
 import app.tape.graph
 import app.tape.library.Progress
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 /**
  * Owns the player. Gives TAPE a media notification, lock-screen and headset
- * controls, and keeps audiobook positions saved while it plays.
+ * controls, Android Auto browsing (via [LibraryTree]), and keeps audiobook
+ * positions saved while it plays.
  */
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
+    private lateinit var tree: LibraryTree
     private lateinit var player: ExoPlayer
     private val scope = MainScope()
     private var currentBookId: String? = null
@@ -56,6 +64,7 @@ class PlaybackService : MediaSessionService() {
             .build()
         player.addListener(listener)
         graph.sleepTimer.player = player
+        tree = LibraryTree(graph)
 
         // Artwork for the notification can be a Drime URL, so load it with our authenticated stack.
         val bitmapLoader = CacheBitmapLoader(
@@ -71,8 +80,7 @@ class PlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        session = MediaSession.Builder(this, player)
-            .setCallback(SessionCallback())
+        session = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setBitmapLoader(bitmapLoader)
             .setSessionActivity(openApp)
             .build()
@@ -85,7 +93,7 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = session?.player
@@ -159,33 +167,118 @@ class PlaybackService : MediaSessionService() {
         .setContentType(if (speech) C.AUDIO_CONTENT_TYPE_SPEECH else C.AUDIO_CONTENT_TYPE_MUSIC)
         .build()
 
-    private inner class SessionCallback : MediaSession.Callback {
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
 
-        /** Controllers send items without their uri; put it back. */
+        // ---- Browsing (Android Auto and other media browsers) -----------------------
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> =
+            Futures.immediateFuture(LibraryResult.ofItem(tree.root(), rootParams()))
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
+            val children = tree.children(parentId)
+                ?: return@future LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+            LibraryResult.ofItemList(paged(children, page, pageSize), params)
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> = scope.future {
+            tree.item(mediaId)?.let { LibraryResult.ofItem(it, null) }
+                ?: LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE)
+        }
+
+        override fun onSearch(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> = scope.future {
+            session.notifySearchResultChanged(browser, query, tree.search(query).size, params)
+            LibraryResult.ofVoid()
+        }
+
+        override fun onGetSearchResult(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            query: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = scope.future {
+            LibraryResult.ofItemList(paged(tree.search(query), page, pageSize), params)
+        }
+
+        // ---- Playing ------------------------------------------------------------------
+
+        /**
+         * A tap in the car sends one id ("book:…", "album:…"); expand it to the whole
+         * queue. Items from TAPE's own UI just get their uri back (controllers strip it).
+         */
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
+            mediaItems.singleOrNull()?.let { tree.resolve(it) }?.let { return@future it }
+            MediaSession.MediaItemsWithStartPosition(mediaItems.map(::withUri), startIndex, startPositionMs)
+        }
+
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> = Futures.immediateFuture(
-            mediaItems.map { item ->
-                val uri = item.requestMetadata.mediaUri ?: item.localConfiguration?.uri
-                if (uri == null) item else item.buildUpon().setUri(uri).build()
-            }.toMutableList(),
-        )
+        ): ListenableFuture<MutableList<MediaItem>> = scope.future {
+            mediaItems.flatMap { item ->
+                if (item.requestMetadata.mediaUri != null || item.localConfiguration != null) listOf(withUri(item))
+                else tree.resolve(item)?.mediaItems ?: emptyList()
+            }.toMutableList()
+        }
 
-        /** Press play on a headset or in the system media controls after TAPE was closed. */
+        /** Press play on a headset, in the system media controls or in the car after TAPE was closed. */
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val book = graph.progress.lastBookId?.let { graph.books.find(it) }
                 ?: return Futures.immediateFailedFuture(UnsupportedOperationException("Nothing to resume"))
-            val p = graph.progress.get(book.id)
-            val index = if (p == null || p.finished) 0 else p.chapter.coerceIn(0, book.chapters.lastIndex)
-            val position = if (p == null || p.finished) 0L else p.positionMs
-            return Futures.immediateFuture(
-                MediaSession.MediaItemsWithStartPosition(book.mediaItems(), index, position),
-            )
+            return Futures.immediateFuture(tree.bookQueue(book))
         }
     }
+
+    private fun withUri(item: MediaItem): MediaItem {
+        val uri = item.requestMetadata.mediaUri ?: item.localConfiguration?.uri
+        return if (uri == null || item.localConfiguration != null) item else item.buildUpon().setUri(uri).build()
+    }
+
+    private fun <T> paged(list: List<T>, page: Int, pageSize: Int): ImmutableList<T> {
+        if (pageSize <= 0 || pageSize == Int.MAX_VALUE) return ImmutableList.copyOf(list)
+        return ImmutableList.copyOf(list.drop(page * pageSize).take(pageSize))
+    }
+
+    /** Tells Android Auto TAPE supports search and prefers plain lists. */
+    private fun rootParams(): LibraryParams = LibraryParams.Builder()
+        .setExtras(
+            Bundle().apply {
+                putBoolean("android.media.browse.SEARCH_SUPPORTED", true)
+                putBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true)
+                putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", 1)
+                putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", 1)
+            },
+        )
+        .build()
 }

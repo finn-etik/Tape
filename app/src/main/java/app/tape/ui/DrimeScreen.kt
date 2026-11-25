@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,8 +64,8 @@ import app.tape.drime.DrimeConfig
 import app.tape.drime.DrimeEntry
 import app.tape.graph
 import app.tape.library.DrimeShelf
+import app.tape.library.Track
 import app.tape.library.prettyName
-import app.tape.playback.Media
 import kotlinx.coroutines.launch
 
 @Composable
@@ -188,18 +189,27 @@ private fun DrimeBrowserView(graph: AppGraph) {
     val here = state.here
     val items = remember(tracks) {
         tracks.map { e ->
-            Media.item(
+            Track(
                 mediaId = "drime:${e.hash}",
                 uri = graph.drime.downloadUrl(e.hash).toUri(),
-                displayTitle = prettyName(e.name), // embedded tags win when present
+                title = null, // embedded tags win when present
+                displayTitle = prettyName(e.name),
+                artist = null,
                 album = here.name.takeIf { here.hash != null },
+                artwork = null,
             )
         }
     }
+    var fileMenu by remember { mutableStateOf<Int?>(null) }
 
     fun addToBooks(hash: String, name: String, asBook: Boolean) {
         graph.scope.launch { graph.books.addShelf(DrimeShelf(hash, name, asBook)) }
         toast = if (asBook) "“$name” added to Books" else "Books will look inside “$name”"
+    }
+
+    fun addToMusic(hash: String, name: String) {
+        graph.scope.launch { graph.drimeMusic.add(hash, name) }
+        toast = "“$name” added to Music"
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -226,6 +236,10 @@ private fun DrimeBrowserView(graph: AppGraph) {
                 IconButton(onClick = { accountMenu = true }) { Icon(Icons.Rounded.MoreVert, "More", tint = Muted) }
                 DropdownMenu(expanded = accountMenu, onDismissRequest = { accountMenu = false }) {
                     if (here.hash != null) {
+                        DropdownMenuItem(
+                            text = { Text("Add this folder to Music") },
+                            onClick = { accountMenu = false; addToMusic(here.hash, here.name) },
+                        )
                         DropdownMenuItem(
                             text = { Text("Add this folder to Books") },
                             onClick = { accountMenu = false; addToBooks(here.hash, here.name, asBook = true) },
@@ -268,9 +282,9 @@ private fun DrimeBrowserView(graph: AppGraph) {
                 if (tracks.isNotEmpty()) {
                     item {
                         Row(Modifier.padding(horizontal = 24.dp, vertical = 10.dp)) {
-                            PillButton("Play", icon = Icons.Rounded.PlayArrow) { graph.player.play(items) }
+                            PillButton("Play", icon = Icons.Rounded.PlayArrow) { graph.player.playTracks(items) }
                             Spacer(Modifier.width(10.dp))
-                            PillButton("Shuffle", icon = Icons.Rounded.Shuffle, primary = false) { graph.player.play(items, shuffle = true) }
+                            PillButton("Shuffle", icon = Icons.Rounded.Shuffle, primary = false) { graph.player.playTracks(items, shuffle = true) }
                         }
                     }
                 }
@@ -289,6 +303,11 @@ private fun DrimeBrowserView(graph: AppGraph) {
                         }
                         DropdownMenu(expanded = folderMenu == folder, onDismissRequest = { folderMenu = null }) {
                             DropdownMenuItem(
+                                text = { Text("Add to Music") },
+                                leadingIcon = { Icon(Icons.Rounded.MusicNote, null) },
+                                onClick = { folderMenu = null; addToMusic(folder.hash, folder.name) },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Add to Books as one book") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Rounded.LibraryBooks, null) },
                                 onClick = { folderMenu = null; addToBooks(folder.hash, folder.name, asBook = true) },
@@ -302,20 +321,28 @@ private fun DrimeBrowserView(graph: AppGraph) {
                 }
                 items(tracks.size, key = { tracks[it].hash }) { i ->
                     val track = tracks[i]
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .combinedClickable(onClick = { graph.player.play(items, i) })
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Rounded.GraphicEq, null, tint = Muted.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(16.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(prettyName(track.name), style = MaterialTheme.typography.bodyLarge, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                listOf(DrimeEntry.extensionOf(track.name, track.extension).uppercase(), formatBytes(track.size)).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Muted,
+                    Box {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .combinedClickable(onClick = { graph.player.playTracks(items, i) }, onLongClick = { fileMenu = i })
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.GraphicEq, null, tint = Muted.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(prettyName(track.name), style = MaterialTheme.typography.bodyLarge, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOf(DrimeEntry.extensionOf(track.name, track.extension).uppercase(), formatBytes(track.size)).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Muted,
+                                )
+                            }
+                        }
+                        DropdownMenu(expanded = fileMenu == i, onDismissRequest = { fileMenu = null }) {
+                            DropdownMenuItem(
+                                text = { Text("Add to playlist…") },
+                                onClick = { fileMenu = null; PlaylistPicker.open(listOf(items[i])) },
                             )
                         }
                     }
