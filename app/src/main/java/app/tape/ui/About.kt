@@ -31,9 +31,8 @@ private val COMPONENTS = listOf(
     "AndroidX Core, Activity, Lifecycle, Browser" to "Apache 2.0",
     "Jetpack Compose & Material icons" to "Apache 2.0",
     "AndroidX Media3 (ExoPlayer, Session)" to "Apache 2.0",
-    "AndroidX Security Crypto & Google Tink" to "Apache 2.0",
     "OkHttp & Okio" to "Apache 2.0",
-    "Coil" to "Apache 2.0",
+    "Coil 3" to "Apache 2.0",
     "Guava & annotations" to "Apache 2.0",
     "Checker Framework qualifiers" to "MIT",
 )

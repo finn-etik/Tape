@@ -23,8 +23,11 @@ import app.tape.library.LocalMusic
 import app.tape.library.ProgressStore
 import app.tape.playback.PlayerConnection
 import app.tape.playback.SleepTimer
-import coil.ImageLoader
-import coil.ImageLoaderFactory
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +35,7 @@ import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class TapeApp : Application(), ImageLoaderFactory {
+class TapeApp : Application(), SingletonImageLoader.Factory {
     lateinit var graph: AppGraph
         private set
 
@@ -42,8 +45,11 @@ class TapeApp : Application(), ImageLoaderFactory {
     }
 
     /** Coil uses the Drime-aware client, so cover art stored in Drime just loads. */
-    override fun newImageLoader(): ImageLoader =
-        ImageLoader.Builder(this).okHttpClient(graph.drimeHttp).crossfade(true).build()
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .components { add(OkHttpNetworkFetcherFactory(callFactory = { graph.drimeHttp })) }
+            .crossfade(true)
+            .build()
 }
 
 val Context.graph: AppGraph get() = (applicationContext as TapeApp).graph
